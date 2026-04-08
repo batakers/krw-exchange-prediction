@@ -14,7 +14,7 @@ st.write("Will the Korean Won weaken or strengthen over the next 6 months? Predi
 tab1, tab2 = st.tabs(["📈 Prediction Dashboard", "⚙️ Model Insights (Under the Hood)"])
 
 MODEL_PATH = 'best_model.pkl'
-DATA_PATH = 'XAU BTC Silver SP500 dataset.csv'
+DATA_PATH = 'data/XAU BTC Silver SP500 dataset.csv'
 
 with tab1:
     st.markdown("---")

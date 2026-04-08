@@ -9,7 +9,7 @@ import os
 def load_and_preprocess_data(filepath):
     print("Loading data...")
     # Load dataset
-    df = pd.read_csv(filepath)
+    df = pd.read_csv(filepath, thousands=',')
     # Rename unnamed date column
     if 'Unnamed: 0' in df.columns:
         df.rename(columns={'Unnamed: 0': 'Date'}, inplace=True)
@@ -72,7 +72,7 @@ def train_model(X, y):
     return grid.best_estimator_
 
 if __name__ == "__main__":
-    filepath = 'XAU BTC Silver SP500 dataset.csv'
+    filepath = 'data/XAU BTC Silver SP500 dataset.csv'
     if not os.path.exists(filepath):
         print(f"Error: Dataset {filepath} not found in the current directory.")
     else:
