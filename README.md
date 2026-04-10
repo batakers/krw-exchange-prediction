@@ -57,8 +57,8 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
 
 | Version | Algorithm | Test Accuracy | AUC-ROC | F1 (Weighted) |
 |---|---|---|---|---|
-| v1 | Random Forest | 64% | — | 0.58 |
-| v2 Initial | XGBoost | 46% | — | 0.46 |
+| v1 | Random Forest | 64% | - | 0.58 |
+| v2 Initial | XGBoost | 46% | - | 0.46 |
 | v2 Final | XGBoost | 68.4% | 0.798 | 0.70 |
 | **v3** | **XGBoost** | **83.2%** | **0.847** | **0.81** |
 
