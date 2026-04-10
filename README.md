@@ -81,7 +81,7 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
 - **TimeSeriesSplit with Gap**: Internal cross-validation also respects the 63-day gap making CV scores more realistic
 - **Early Stopping**: Replaced GridSearchCV (1,080 iterations) with manual hyperparameters + `early_stopping_rounds=50` faster training and automatic overfitting prevention
 - **L2 Regularization** (`reg_lambda=2`) **+ Gamma** (`gamma=1`): Makes the model more conservative, penalizing overly complex trees
-- **Volatility Feature**: Added `KRW_vol_20d` — 20-day rolling standard deviation of KRW returns, capturing market panic/anomaly periods
+- **Volatility Feature**: Added `KRW_vol_20d` 20-day rolling standard deviation of KRW returns, capturing market panic/anomaly periods
 - **Threshold Optimization**: Searched for the optimal probability cutoff (found at 0.65 instead of default 0.50) the model requires ≥65% confidence before predicting "KRW weakens", which dramatically improved accuracy from 57.8% → 83.2%
 - **SHAP Explainability**: Added real-time feature contribution visualization in the dashboard
 - **Result**: Accuracy reached 83.2%, AUC-ROC improved to 0.847
