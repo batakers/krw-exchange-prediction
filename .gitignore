@@ -2,3 +2,5 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 .streamlit/
+notebooks/
+data/Data Historis KRW_USD March - May.csv
