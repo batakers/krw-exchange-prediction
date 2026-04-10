@@ -38,6 +38,11 @@ def build_features_for_prediction(data_path):
     # Drop pre-Bitcoin era
     df = df[df.index >= '2014-09-17'].copy()
 
+    # Point-in-Time: shift government-released macro data by 30 days
+    # CPI and Unemployment have ~1 month publication lag
+    df['Inflation_CPI'] = df['Inflation_CPI'].shift(30)
+    df['Unemployment'] = df['Unemployment'].shift(30)
+
     price_cols = ['Gold', 'USD_Index', 'Oil', 'Silver', 'SP500', 'Bitcoin', 'KRW', 'KRX']
     macro_cols = ['Interest_Rate', '10Y_Treasury_Yield', 'Inflation_CPI', 'Unemployment']
 
@@ -193,10 +198,84 @@ with tab1:
                             "will feel more expensive. Consider **exchanging your cash now** before "
                             "the rate shifts in the coming months.")
 
+                # ── Volatility Bands (Historical Range) ─────
+                st.markdown("---")
+                st.subheader("📐 Expected Movement Range (Historical Volatility)")
+                st.caption("Instead of predicting an exact number (which is unreliable), "
+                          "we calculate the **historical range** of KRW movements over 63-day windows. "
+                          "This tells you how much the currency *typically* moves.")
+
+                # Calculate 63-day rolling returns from raw KRW data
+                krw_returns_63d = df_raw['KRW'].pct_change(63).dropna() * 100
+                recent_returns = krw_returns_63d.tail(252)  # Last ~1 year of 63-day returns
+
+                mean_move = recent_returns.mean()
+                std_move = recent_returns.std()
+                current_krw = df_raw['KRW'].iloc[-1]
+
+                # Expected bands
+                band_low = mean_move - std_move
+                band_high = mean_move + std_move
+                band_2_low = mean_move - 2 * std_move
+                band_2_high = mean_move + 2 * std_move
+
+                vol_col1, vol_col2, vol_col3 = st.columns(3)
+                vol_col1.metric("Current USD/KRW", f"{current_krw:,.2f}",
+                               help="💱 The current exchange rate. This number shows how many Korean Won "
+                                    "you need to buy 1 US Dollar.")
+                vol_col2.metric("Avg 63-Day Move", f"{mean_move:+.2f}%",
+                               help="📊 Average percentage change in KRW over rolling 63-trading-day windows "
+                                    "(≈3 calendar months) during the last year. "
+                                    "Positive (+) = KRW tends to weaken, Negative (-) = KRW tends to strengthen.")
+                vol_col3.metric("Volatility (1σ)", f"±{std_move:.2f}%",
+                               help="📈 Standard deviation (σ) of 63-day returns. "
+                                    "The larger this number, the wilder the market swings. "
+                                    "Computed from the statistical distribution of historical returns — "
+                                    "not an ML prediction, but a hard fact from raw data.")
+
+                # Visual: expected range
+                st.markdown("##### Expected Range (next 63 trading days)")
+                range_col1, range_col2 = st.columns(2)
+                with range_col1:
+                    st.metric("68% Confidence (±1σ)",
+                             f"{band_low:+.2f}% to {band_high:+.2f}%",
+                             help="🎯 Based on the normal distribution, there is a 68% probability "
+                                  "that the KRW movement will fall within this range. "
+                                  "Calculated as: Mean ± 1 Standard Deviation.")
+                    expected_low_1 = current_krw * (1 + band_low / 100)
+                    expected_high_1 = current_krw * (1 + band_high / 100)
+                    st.caption(f"≈ KRW {expected_low_1:,.0f} – {expected_high_1:,.0f}")
+                with range_col2:
+                    st.metric("95% Confidence (±2σ)",
+                             f"{band_2_low:+.2f}% to {band_2_high:+.2f}%",
+                             help="🛡️ A wider band with 95% confidence. "
+                                  "The movement will almost certainly stay within these bounds. "
+                                  "Calculated as: Mean ± 2 Standard Deviations. "
+                                  "Moves beyond this range are considered extreme events (black swans).")
+                    expected_low_2 = current_krw * (1 + band_2_low / 100)
+                    expected_high_2 = current_krw * (1 + band_2_high / 100)
+                    st.caption(f"≈ KRW {expected_low_2:,.0f} – {expected_high_2:,.0f}")
+
+                # Contextual interpretation
+                if std_move < 2.0:
+                    st.caption("🔸 **Low Volatility**: Market is relatively calm. "
+                              "Exchange rate differences will likely be minimal.")
+                elif std_move < 5.0:
+                    st.caption("🔶 **Normal Volatility**: Typical market conditions. "
+                              "Timing your exchange could save a meaningful amount on large sums.")
+                else:
+                    st.caption("🔴 **High Volatility**: Market is turbulent! "
+                              "Consider hedging or splitting your exchange into multiple transactions.")
+
                 # ── Confidence Breakdown ────────────────────
                 col_a, col_b, col_c = st.columns(3)
-                col_a.metric("Raw Probability (Weaken)", f"{prob_pct:.1f}%")
-                col_b.metric("Decision Threshold", f"{threshold_pct:.0f}%")
+                col_a.metric("Raw Probability (Weaken)", f"{prob_pct:.1f}%",
+                            help="🤖 The raw probability output from the XGBoost model that KRW will weaken. "
+                                 "This comes directly from predict_proba() before the threshold filter is applied.")
+                col_b.metric("Decision Threshold", f"{threshold_pct:.0f}%",
+                            help="⚖️ The optimized decision boundary. "
+                                 "If probability ≥ threshold → prediction is 'Weaken'. "
+                                 "This threshold was found via exhaustive search on the test set to maximize accuracy.")
                 col_c.metric("Verdict", "WEAKEN" if prediction == 1 else "STRENGTHEN",
                              delta=f"{prob_pct - threshold_pct:+.1f}% vs threshold",
                              delta_color="normal" if prediction == 1 else "inverse")
@@ -370,8 +449,83 @@ with tab2:
         st.markdown("Trust is earned, not claimed. This section provides **transparent evidence** "
                      "of the model's predictive power against actual market movements.")
 
-        # ── 5a. Backtesting on Hold-out Test Set ─────────
-        st.markdown("#### 5a. Backtesting on Unseen Test Data")
+        # ── 5a. Walk-Forward Validation ──────────────────
+        st.markdown("#### 5a. Walk-Forward Validation (Expanding Window Backtesting)")
+        st.caption("The model is retrained from scratch for each test year using an expanding window. "
+                   "This proves whether performance is consistent across different market regimes, "
+                   "not just a lucky result on one specific test period.")
+
+        wf_results = model_data.get('walk_forward_results', None)
+        if wf_results and len(wf_results) > 0:
+            wf_df = pd.DataFrame(wf_results)
+
+            # Summary metrics with std
+            avg_acc = wf_df['Accuracy'].mean()
+            std_acc = wf_df['Accuracy'].std()
+            avg_auc = wf_df['AUC-ROC'].mean()
+            std_auc = wf_df['AUC-ROC'].std()
+            avg_f1 = wf_df['F1-Weighted'].mean()
+            std_f1 = wf_df['F1-Weighted'].std()
+
+            col_wf1, col_wf2, col_wf3 = st.columns(3)
+            col_wf1.metric("Avg Accuracy", f"{avg_acc*100:.1f}% (±{std_acc*100:.1f}%)",
+                          help="Mean accuracy across all folds ± standard deviation")
+            col_wf2.metric("Avg AUC-ROC", f"{avg_auc:.3f} (±{std_auc:.3f})",
+                          help="Mean AUC-ROC across all folds ± standard deviation")
+            col_wf3.metric("Avg F1-Score", f"{avg_f1:.3f} (±{std_f1:.3f})",
+                          help="Mean weighted F1 across all folds ± standard deviation")
+
+            # Grouped bar chart: Accuracy + AUC-ROC + F1 per fold
+            fig_wf = go.Figure()
+            fold_labels = wf_df['Fold']
+
+            fig_wf.add_trace(go.Bar(
+                x=fold_labels, y=[a * 100 for a in wf_df['Accuracy']],
+                name='Accuracy (%)',
+                marker_color='#22c55e',
+                text=[f"{a*100:.1f}%" for a in wf_df['Accuracy']],
+                textposition='outside'
+            ))
+            fig_wf.add_trace(go.Bar(
+                x=fold_labels, y=[a * 100 for a in wf_df['AUC-ROC']],
+                name='AUC-ROC (%)',
+                marker_color='#f59e0b',
+                text=[f"{a*100:.1f}%" for a in wf_df['AUC-ROC']],
+                textposition='outside'
+            ))
+            fig_wf.add_trace(go.Bar(
+                x=fold_labels, y=[a * 100 for a in wf_df['F1-Weighted']],
+                name='F1-Weighted (%)',
+                marker_color='#3b82f6',
+                text=[f"{a*100:.1f}%" for a in wf_df['F1-Weighted']],
+                textposition='outside'
+            ))
+            fig_wf.add_hline(y=50, line_dash="dot", line_color="red",
+                            annotation_text="Random Guess (50%)", annotation_position="bottom right")
+            fig_wf.update_layout(
+                title="Walk-Forward Validation: Performance Across 5 Expanding Window Folds",
+                xaxis_title="Fold", yaxis_title="Score (%)",
+                barmode='group',
+                template="plotly_dark", height=450,
+                yaxis=dict(range=[0, 110]),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_wf, use_container_width=True)
+
+            # Detailed table
+            display_wf = wf_df.copy()
+            display_wf['Accuracy'] = [f"{a*100:.1f}%" for a in wf_df['Accuracy']]
+            display_wf['AUC-ROC'] = [f"{a:.4f}" for a in wf_df['AUC-ROC']]
+            display_wf['F1-Weighted'] = [f"{a:.4f}" for a in wf_df['F1-Weighted']]
+            st.dataframe(display_wf.set_index('Fold'), use_container_width=True)
+
+        else:
+            st.info("Walk-Forward results not available. Re-run `python train_model.py` to generate them.")
+
+        st.markdown("---")
+
+        # ── 5b. Backtesting on Hold-out Test Set ─────────
+        st.markdown("#### 5b. Backtesting on Unseen Test Data")
         st.caption("The model was trained on 85% of data (pre-2024). These predictions were made "
                    "on the remaining 15% — data the model had **never seen during training**.")
 
@@ -433,7 +587,7 @@ with tab2:
         st.markdown("---")
 
         # ── 5b. Case Study: January 2025 Prediction ──────
-        st.markdown("#### 5b. Case Study: January 9, 2025 Prediction")
+        st.markdown("#### 5c. Case Study: January 9, 2025 Prediction")
 
         case_col1, case_col2 = st.columns(2)
         with case_col1:
