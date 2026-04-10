@@ -8,7 +8,7 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
 - **Target variable**: `1` if USD/KRW increases (KRW weakens), `0` otherwise.
 - **Goal**: Provide actionable insights for travel and forex decisions.
 
-## Model Performance (v3 — XGBoost with Threshold Optimization)
+## Model Performance (v3  XGBoost with Threshold Optimization)
 
 | Metric | Score |
 |---|---|
