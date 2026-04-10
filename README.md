@@ -58,18 +58,18 @@ To prove that the hold-out accuracy is not just a "lucky final score", this proj
 | Fold | Train Period | Test Period | Accuracy | AUC-ROC | F1-Weighted |
 |---|---|---|---|---|---|
 | 1 | 2015–2016 | 2016–2017 | 64.3% | 0.689 | 0.619 |
-| 2 | 2015–2017 | 2018–2019 | 44.9% | 0.568 | 0.438 |
-| 3 | 2015–2019 | 2019–2020 | 48.7% | 0.645 | 0.484 |
-| 4 | 2015–2020 | 2021–2022 | 42.6% | 0.485 | 0.417 |
-| 5 | 2015–2022 | 2023–2024 | **68.9%** | **0.704** | **0.702** |
-| **Mean** | | | **53.9%** | **0.618** | **0.532** |
-| **Std** | | | ±10.7% | ±0.082 | ±0.110 |
+| 2 | 2015–2017 | 2018–2019 | 44.9% | 0.567 | 0.437 |
+| 3 | 2015–2019 | 2019–2020 | 48.7% | 0.644 | 0.483 |
+| 4 | 2015–2020 | 2021–2022 | 42.6% | 0.484 | 0.417 |
+| 5 | 2015–2022 | 2023–2024 | **68.8%** | **0.703** | **0.701** |
+| **Mean** | | | **53.8%** | **0.618** | **0.531** |
+| **Std** | | | ±10.6% | ±0.081 | ±0.1103 |
 
 ### Honest Interpretation
 
 The Walk-Forward average (53.9%) is significantly lower than the hold-out test (80.5%). Rather than hiding this gap, we embrace it as a sign of **scientific transparency**:
 
-- **Fold 5 (most training data)** achieves **68.9%** accuracy — confirming the model genuinely improves as it sees more data.
+- **Fold 5 (most training data)** achieves **68.8%** accuracy — confirming the model genuinely improves as it sees more data.
 - **Folds 2-4** cover turbulent market regimes (trade wars, COVID, rate hikes) where *any* statistical model would struggle.
 - **AUC-ROC consistently > 0.50** across all folds, proving the model captures real signal, not random noise.
 - The hold-out test (80.5%) represents the model's performance with **maximum available training data** — the most realistic deployment scenario.
