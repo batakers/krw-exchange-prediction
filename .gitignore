@@ -3,7 +3,6 @@ __pycache__/
 .DS_Store
 .streamlit/
 notebooks/
-*.pkl
 *.ipynb
 refactor.py
 data/Data Historis KRW_USD March - May.csv
