@@ -502,6 +502,6 @@ with tab2:
         st.warning("Data or model file is missing. Cannot generate insights.")
 
 st.markdown("---")
-st.markdown("*KRW Movement Prediction Dashboard — Powered by XGBoost v3 with advanced feature engineering, "
+st.markdown("*KRW Movement Prediction Dashboard - Powered by XGBoost v3 with advanced feature engineering, "
             "early stopping, L2 regularization, and optimized threshold. "
             "Model evaluated on unseen test data (Accuracy: 83.2%, AUC-ROC: 0.847).*")
