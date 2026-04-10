@@ -53,38 +53,79 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
    streamlit run app.py
    ```
 
-## Model Evolution
+## Model Evolution: The Journey
 
-| Version | Algorithm | Test Accuracy | AUC-ROC | F1 (Weighted) |
-|---|---|---|---|---|
-| v1 | Random Forest | 64% | - | 0.58 |
-| v2 Initial | XGBoost | 46% | - | 0.46 |
-| v2 Final | XGBoost | 68.4% | 0.798 | 0.70 |
-| **v3** | **XGBoost** | **83.2%** | **0.847** | **0.81** |
+| Version | Algorithm | Prediction Horizon | Test Accuracy | AUC-ROC | F1 (Weighted) |
+|---|---|---|---|---|---|
+| v1 | Random Forest | **6 months** (126 days) | 64% | - | 0.58 |
+| v2 Initial | XGBoost | **3 months** (63 days) | 46% | - | 0.46 |
+| v2 Final | XGBoost | 3 months (63 days) | 68.4% | 0.798 | 0.70 |
+| **v3** | **XGBoost** | **3 months (63 days)** | **83.2%** | **0.847** | **0.81** |
 
-### v1 → v2 Initial: Algorithm Change
-- Replaced `RandomForestClassifier` with `XGBClassifier`
-- Kept the same features (daily `pct_change()` + SMA-30)
-- **Result**: Accuracy dropped from 64% → 46% because XGBoost without proper tuning overfits more aggressively than Random Forest on noisy financial data
+---
 
-### v2 Initial → v2 Final: Feature Engineering Overhaul
-- **Dropped pre-Bitcoin era** (before Sep 2014): Eliminated 1,718 rows where Bitcoin=NaN was filled with 0, which produced false signals in `pct_change()` calculations
-- **Multi-Horizon Returns**: Replaced daily `pct_change()` with rolling returns over 5, 10, 20, and 60-day windows more relevant for a 63-day prediction horizon
-- **Regime Detection**: Added binary features checking if USD/Gold/SP500 are above their 200-day SMA (risk-on vs risk-off market environment)
-- **Macro Z-Scores**: Normalized Interest Rate, Treasury Yield, CPI, and Unemployment against their 252-day rolling statistics captures "is this historically high or low?"
-- **Spread Features**: Added Gold/Silver ratio (safe-haven proxy), KRW momentum, and cross-market divergence signals
-- **Proper Train/Test Split**: Added `shuffle=False` hold-out test set (15%) to evaluate on truly unseen future data
-- **Result**: Accuracy jumped from 46% → 68.4%, AUC-ROC reached 0.798
+### v1: The Starting Point (Random Forest, 6-Month Horizon)
 
-### v2 Final → v3: Training Pipeline & Threshold Optimization
-- **Purged Train-Test Gap**: Added a 63-day gap between training and test data to prevent target leakage (since our target looks 63 days into the future)
-- **TimeSeriesSplit with Gap**: Internal cross-validation also respects the 63-day gap making CV scores more realistic
-- **Early Stopping**: Replaced GridSearchCV (1,080 iterations) with manual hyperparameters + `early_stopping_rounds=50` faster training and automatic overfitting prevention
-- **L2 Regularization** (`reg_lambda=2`) **+ Gamma** (`gamma=1`): Makes the model more conservative, penalizing overly complex trees
-- **Volatility Feature**: Added `KRW_vol_20d` 20-day rolling standard deviation of KRW returns, capturing market panic/anomaly periods
-- **Threshold Optimization**: Searched for the optimal probability cutoff (found at 0.65 instead of default 0.50) the model requires ≥65% confidence before predicting "KRW weakens", which dramatically improved accuracy from 57.8% → 83.2%
-- **SHAP Explainability**: Added real-time feature contribution visualization in the dashboard
-- **Result**: Accuracy reached 83.2%, AUC-ROC improved to 0.847
+The project began with a simple goal: predict whether the Korean Won would weaken or strengthen **6 months (~126 trading days) into the future** using a `RandomForestClassifier`. The features were basic: daily percentage changes (`pct_change()`) and 30-day Simple Moving Averages (SMA-30) across 12 global economic indicators.
+
+The initial results looked reasonable on paper with **64% accuracy**. However, a deeper analysis revealed a critical flaw: the model was evaluated on the **same data it was trained on** (full dataset evaluation), meaning the "64%" was heavily inflated by data leakage. The model wasn't truly learning patterns; it was partially memorizing the training data.
+
+**Features used**: Daily `pct_change()`, SMA-30 for Gold/SP500/Interest Rate  
+**Problems identified**: No proper train/test split, Bitcoin NaN filled with 0 creating false signals, 6-month horizon was too ambitious for the available features
+
+---
+
+### v2 Initial: The Algorithm Switch Gone Wrong (XGBoost, 46%)
+
+To improve performance, the algorithm was upgraded from Random Forest to `XGBClassifier` (XGBoost), a more powerful gradient boosting algorithm. At the same time, the prediction horizon was shortened from **6 months to 3 months (63 trading days)** because:
+1. Predicting 6 months ahead with daily macro indicators was too noisy
+2. A 3-month window is more actionable for travel and forex decisions
+3. Shorter horizons generally produce more reliable predictions
+
+However, the result was shocking: accuracy **dropped to 46%**, which is worse than flipping a coin (50%). What went wrong?
+
+The problem was **severe overfitting**. When evaluated on the full dataset, XGBoost showed **100% accuracy** (a classic red flag known as "The Memorization Monster"). But when a proper hold-out test set was introduced with `shuffle=False`, the model's true performance was exposed: it was essentially guessing randomly on unseen future data.
+
+**Root cause**: XGBoost is a much more aggressive learner than Random Forest. Without proper regularization and with weak features (daily pct_change), it memorized every detail of the training data but learned nothing generalizable.
+
+---
+
+### v2 Final: The Feature Engineering Breakthrough (68.4%)
+
+The key realization: **the quality of features matters far more than the choice of algorithm**. The entire feature engineering pipeline was rebuilt from scratch:
+
+1. **Dropped pre-Bitcoin era** (before Sep 2014): Eliminated 1,718 rows where Bitcoin=NaN was filled with 0. This was silently creating false "0% return" signals that corrupted the model's learning
+2. **Multi-Horizon Returns**: Replaced single-day `pct_change()` with rolling returns over 5, 10, 20, and 60-day windows. Daily returns are too noisy for a 63-day prediction; multi-horizon returns capture trends at the right time-scale
+3. **Regime Detection**: Added binary features checking if USD/Gold/SP500 are above their 200-day SMA (a standard technique to identify risk-on vs risk-off market environments)
+4. **Macro Z-Scores**: Instead of feeding raw Interest Rate or CPI values, they were normalized against their 252-day (1-year) rolling statistics. This transforms the question from "what is the interest rate?" to "is this interest rate *historically high or low*?"
+5. **Spread Features**: Added Gold/Silver ratio (safe-haven demand proxy), KRW momentum (mean-reversion signal), and cross-market divergence indicators
+
+The model was now evaluated properly with a **15% hold-out test set** (`shuffle=False` to respect chronological order).
+
+**Result**: Accuracy jumped from 46% to **68.4%**, and AUC-ROC reached **0.798**. The model was finally learning real patterns, not memorizing noise.
+
+---
+
+### v3: The Final Optimization (83.2%)
+
+The v2 model had strong discriminative power (AUC-ROC 0.798) but still had room for improvement in its training pipeline. Three critical upgrades were made:
+
+**1. Purged Train-Test Gap (Anti-Leakage)**  
+Since the target looks 63 days into the future, the last 63 rows of training data have targets that temporally overlap with the test set. A 63-day gap was added between train and test data, and `TimeSeriesSplit(gap=63)` was applied to internal cross-validation. This is an industry-grade technique known as *purged cross-validation*.
+
+**2. Regularization & Early Stopping (Anti-Overfitting)**  
+- `gamma=1`: Penalizes unnecessary tree splits
+- `reg_lambda=2`: L2 regularization on leaf weights
+- `early_stopping_rounds=50`: Model automatically stops training when validation performance stagnates
+- Added `KRW_vol_20d` (volatility feature) to capture market panic/anomaly periods
+
+**3. Threshold Optimization (The Game-Changer)**  
+The default classification threshold of 0.50 was suboptimal for this imbalanced dataset. A systematic search across thresholds revealed that **0.65** maximizes accuracy. The model now requires ≥65% confidence before predicting "KRW weakens."
+
+This single change boosted accuracy from 57.8% (default threshold) to **83.2%** (optimal threshold), while maintaining the same AUC-ROC of **0.847**.
+
+**4. SHAP Explainability**  
+Added real-time feature contribution visualization in the dashboard, answering "Why does the model predict this?" for every single prediction.
 
 ## Real-World Validation
 
