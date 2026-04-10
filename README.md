@@ -127,6 +127,38 @@ This single change boosted accuracy from 57.8% (default threshold) to **83.2%** 
 **4. SHAP Explainability**  
 Added real-time feature contribution visualization in the dashboard, answering "Why does the model predict this?" for every single prediction.
 
+---
+
+### Full Comparison
+
+| Aspect | v1 | v2 Initial | v2 Final | v3 (Final) |
+|---|---|---|---|---|
+| **Algorithm** | Random Forest | XGBoost | XGBoost | XGBoost |
+| **Prediction Horizon** | 6 months (126 days) | 3 months (63 days) | 3 months (63 days) | 3 months (63 days) |
+| **Features** | Daily pct_change, SMA-30 | Daily pct_change, SMA-30 | Multi-horizon returns, Regime, Z-Scores, Spreads | Multi-horizon returns, Regime, Z-Scores, Spreads, Volatility |
+| **Data Period** | Full (2000-2025) | Full (2000-2025) | Post-Bitcoin (2014+) | Post-Bitcoin (2014+) |
+| **Train/Test Split** | No hold-out | Hold-out 15% | Hold-out 15% | Hold-out 15% + 63-day gap |
+| **Hyperparameter Tuning** | GridSearchCV | GridSearchCV | GridSearchCV (216 combos) | Manual + Early Stopping |
+| **Regularization** | Default | Default | Default | gamma=1, reg_lambda=2 |
+| **Threshold** | Default (0.50) | Default (0.50) | Default (0.50) | Optimized (0.65) |
+| **Explainability** | None | None | None | SHAP |
+| **Test Accuracy** | 64%* | 46% | 68.4% | **83.2%** |
+| **Test AUC-ROC** | - | - | 0.798 | **0.847** |
+
+*\*v1 accuracy was inflated due to the lack of a proper hold-out test set*
+
+### Key Takeaways
+
+1. **A powerful algorithm alone is not enough.** Upgrading from Random Forest to XGBoost without fixing the underlying data issues made the model *worse* (64% to 46%). The algorithm amplified the noise instead of learning from it.
+
+2. **Feature engineering is the most impactful lever.** The jump from 46% to 68.4% came entirely from redesigning *what* the model sees: multi-horizon returns, regime detection, and macro z-scores. The algorithm stayed the same.
+
+3. **The prediction horizon must match the feature granularity.** Predicting 6 months ahead with daily price changes is like trying to forecast the weather next season by looking out the window today. Shortening to 3 months and using 5-60 day rolling returns created a much better signal-to-noise ratio.
+
+4. **Threshold optimization is a hidden multiplier.** The same model with the same features went from 57.8% to 83.2% accuracy simply by changing one number: the classification threshold from 0.50 to 0.65.
+
+5. **Proper evaluation prevents false confidence.** Without a chronological hold-out test set and temporal gap, financial models will always appear more accurate than they truly are.
+
 ## Real-World Validation
 
 > *"Trust is earned, not claimed."* This model doesn't just perform well on paper. It has been **verified against actual market movements**.
