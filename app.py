@@ -17,7 +17,7 @@ tab1, tab2 = st.tabs(["📈 Prediction Dashboard", "⚙️ Model Insights (Under
 
 MODEL_PATH = 'best_model_v3.pkl'
 DATA_PATH = 'data/XAU BTC Silver SP500 dataset.csv'
-DEFAULT_THRESHOLD = 0.65
+DEFAULT_THRESHOLD = 0.55
 
 # ─────────────────────────────────────────────
 # SHARED: Feature Engineering (mirrors train_model.py v3)
@@ -360,9 +360,9 @@ with tab2:
         st.subheader("1. Model Performance Summary")
 
         col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Test Accuracy", "83.2%", help="Percentage of correct predictions on unseen test data (with optimized threshold)")
-        col2.metric("Test AUC-ROC", "0.847", help="Area Under ROC Curve — 0.5 = random, 1.0 = perfect")
-        col3.metric("Weighted F1", "0.81", help="Harmonic mean of precision and recall (weighted)")
+        col1.metric("Test Accuracy", "80.5%", help="Percentage of correct predictions on unseen test data (with optimized threshold)")
+        col2.metric("Test AUC-ROC", "0.746", help="Area Under ROC Curve — 0.5 = random, 1.0 = perfect")
+        col3.metric("Weighted F1", "0.78", help="Harmonic mean of precision and recall (weighted)")
         col4.metric("Threshold", f"{saved_threshold}", help="Optimized decision threshold for classification")
         col5.metric("Algorithm", "XGBoost v3", help="Gradient boosted trees with early stopping & L2 regularization")
 
@@ -439,7 +439,7 @@ with tab2:
         | **Regime Detection** | `USD_regime` | Binary: is USD above its 200-day SMA? (risk-on/off proxy) |
         | **Macro Z-Scores** | `{macro}_zscore` | Normalized macro indicators against 252-day rolling stats |
         | **Spreads** | `Gold_Silver_ratio`, `KRX_SP500_spread` | Cross-asset divergence signals |
-        | **Threshold Optimization** | `0.65` | Model requires ≥65% confidence before predicting KRW weakening |
+        | **Threshold Optimization** | `0.55` | Model requires ≥55% confidence before predicting KRW weakening |
         """)
 
         st.markdown("---")
@@ -658,4 +658,4 @@ with tab2:
 st.markdown("---")
 st.markdown("*KRW Movement Prediction Dashboard - Powered by XGBoost v3 with advanced feature engineering, "
             "early stopping, L2 regularization, and optimized threshold. "
-            "Model evaluated on unseen test data (Accuracy: 83.2%, AUC-ROC: 0.847).*")
+            "Model evaluated on unseen test data (Accuracy: 80.5%, AUC-ROC: 0.746).*")
