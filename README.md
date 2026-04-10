@@ -17,7 +17,7 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
 | **Weighted F1-Score** | **0.78** |
 | **Optimal Threshold** | 0.55 |
 
-> The model was evaluated on a **15% hold-out test set** (unseen future data) with `shuffle=False` to prevent temporal data leakage — a critical requirement for time-series forecasting. A **Lookahead Bias Fix** was applied to government-released macro data (CPI, Unemployment) by shifting them 30 trading days to reflect real-world publication lag.
+> The model was evaluated on a **15% hold-out test set** (unseen future data) with `shuffle=False` to prevent temporal data leakage a critical requirement for time-series forecasting. A **Lookahead Bias Fix** was applied to government-released macro data (CPI, Unemployment) by shifting them 30 trading days to reflect real-world publication lag.
 
 ## Feature Engineering
 
@@ -51,7 +51,7 @@ To prove that the hold-out accuracy is not just a "lucky final score", this proj
 
 1. The model is trained on a historical window, evaluated on the next unseen block of time, and then the window **expands**.
 2. A **63-day purged gap** is enforced between train and test sets to absolutely guarantee zero data leakage.
-3. Inside each fold, `RandomizedSearchCV` (20 combinations × 3 inner folds) dynamically searches for the best hyperparameters — no single static configuration is assumed optimal for all market conditions.
+3. Inside each fold, `RandomizedSearchCV` (20 combinations × 3 inner folds) dynamically searches for the best hyperparameters no single static configuration is assumed optimal for all market conditions.
 
 ### Walk-Forward Results
 
@@ -69,12 +69,12 @@ To prove that the hold-out accuracy is not just a "lucky final score", this proj
 
 The Walk-Forward average (53.9%) is significantly lower than the hold-out test (80.5%). Rather than hiding this gap, we embrace it as a sign of **scientific transparency**:
 
-- **Fold 5 (most training data)** achieves **68.8%** accuracy — confirming the model genuinely improves as it sees more data.
+- **Fold 5 (most training data)** achieves **68.8%** accuracy confirming the model genuinely improves as it sees more data.
 - **Folds 2-4** cover turbulent market regimes (trade wars, COVID, rate hikes) where *any* statistical model would struggle.
 - **AUC-ROC consistently > 0.50** across all folds, proving the model captures real signal, not random noise.
-- The hold-out test (80.5%) represents the model's performance with **maximum available training data** — the most realistic deployment scenario.
+- The hold-out test (80.5%) represents the model's performance with **maximum available training data** the most realistic deployment scenario.
 
-> **Takeaway:** The model is not magic — it works best with sufficient training data (>1,500 samples) and performs strongest in recent market conditions. This is an honest, expected characteristic of any financial ML model.
+> **Takeaway:** The model is not magic it works best with sufficient training data (>1,500 samples) and performs strongest in recent market conditions. This is an honest, expected characteristic of any financial ML model.
 
 ## How to Run Locally
 1. Install dependencies:
@@ -151,7 +151,7 @@ The v2 model had strong discriminative power (AUC-ROC 0.798) but still had room 
 Since the target looks 63 days into the future, the last 63 rows of training data have targets that temporally overlap with the test set. A 63-day gap was added between train and test data, and `TimeSeriesSplit(gap=63)` was applied to internal cross-validation. This is an industry-grade technique known as *purged cross-validation*.
 
 **2. Lookahead Bias Fix (Point-in-Time Compliance)**  
-Government-released macro data (`Inflation_CPI`, `Unemployment`) is published with a ~30-day lag. The original pipeline used these values as if they were available in real-time, creating a subtle lookahead bias. After applying a 30-trading-day shift, accuracy dropped from 83.2% to 80.5% — proving that ~3% of the original accuracy was attributable to this bias. This fix ensures the model only uses information that would have been publicly available at prediction time.
+Government-released macro data (`Inflation_CPI`, `Unemployment`) is published with a ~30-day lag. The original pipeline used these values as if they were available in real-time, creating a subtle lookahead bias. After applying a 30-trading-day shift, accuracy dropped from 83.2% to 80.5% proving that ~3% of the original accuracy was attributable to this bias. This fix ensures the model only uses information that would have been publicly available at prediction time.
 
 **3. Regularization & Early Stopping (Anti-Overfitting)**  
 - `gamma=1`: Penalizes unnecessary tree splits
@@ -198,7 +198,7 @@ Added real-time feature contribution visualization in the dashboard, answering "
 
 4. **Threshold optimization is a hidden multiplier.** The same model with the same features went from 76.5% to 80.5% accuracy simply by changing one number: the classification threshold from 0.50 to 0.55.
 
-5. **Fixing lookahead bias costs accuracy — and that's a good thing.** Applying a 30-day shift to CPI and Unemployment reduced accuracy from 83.2% to 80.5%. This ~3% drop proves the original model was partially "cheating" by using government data before it was actually published. The corrected 80.5% is a more honest, production-realistic number.
+5. **Fixing lookahead bias costs accuracy and that's a good thing.** Applying a 30-day shift to CPI and Unemployment reduced accuracy from 83.2% to 80.5%. This ~3% drop proves the original model was partially "cheating" by using government data before it was actually published. The corrected 80.5% is a more honest, production-realistic number.
 
 5. **Proper evaluation prevents false confidence.** Without a chronological hold-out test set and temporal gap, financial models will always appear more accurate than they truly are.
 
@@ -232,7 +232,7 @@ The Korean Won strengthened significantly from ~1,460 to ~1,420 (and further to 
 
 ---
 
-## Research: Data Trade-off Analysis — Why Pre-2014 Data Was Discarded
+## Research: Data Trade-off Analysis Why Pre-2014 Data Was Discarded
 
 > *A common critique of this project is: "You're throwing away 14 years of valuable macro-economic history (2000–2014)  including the 2008 Financial Crisis  just to keep Bitcoin as a feature. Is that trade-off really worth it?"*
 
@@ -256,15 +256,15 @@ Three scenarios were evaluated using the exact same training pipeline (XGBoost, 
 | B: 2000+ NO Bitcoin | 65.0% | 0.5233 | 0.5118 | 0.55 |
 | C: 2000+ Bitcoin filled | 75.7% | 0.7608 | 0.6572 | 0.70 |
 
-**🏆 Winner: Scenario A** — The current approach, by a significant margin.
+**🏆 Winner: Scenario A** The current approach, by a significant margin.
 
 ### Analysis
 
-1. **Removing Bitcoin collapses model performance.** Scenario B's AUC-ROC of 0.5233 is barely above random chance (0.50). Despite having **60% more training data** (4,072 vs 2,537 samples), the model without Bitcoin cannot meaningfully distinguish between KRW weakening and strengthening periods. This proves Bitcoin is not merely "one more feature" — it is a **critical signal** for modern FX prediction.
+1. **Removing Bitcoin collapses model performance.** Scenario B's AUC-ROC of 0.5233 is barely above random chance (0.50). Despite having **60% more training data** (4,072 vs 2,537 samples), the model without Bitcoin cannot meaningfully distinguish between KRW weakening and strengthening periods. This proves Bitcoin is not merely "one more feature" it is a **critical signal** for modern FX prediction.
 
 2. **The 2008 crisis data does not help.** Contrary to intuition, adding 14 years of pre-Bitcoin macro history (including the Global Financial Crisis, European Debt Crisis, and Taper Tantrum) actually *degrades* performance. The model trained on these historical regimes learns patterns that **no longer apply** to the post-2014 market structure.
 
-3. **The Hybrid approach confirms the hypothesis.** Scenario C (full history + Bitcoin zero-filled before 2014) scores 75.7% — better than no Bitcoin, but worse than pure post-2014 data. The zero-filled pre-2014 period introduces noise that dilutes the signal, confirming that pre-2014 market dynamics are structurally different.
+3. **The Hybrid approach confirms the hypothesis.** Scenario C (full history + Bitcoin zero-filled before 2014) scores 75.7% better than no Bitcoin, but worse than pure post-2014 data. The zero-filled pre-2014 period introduces noise that dilutes the signal, confirming that pre-2014 market dynamics are structurally different.
 
 ### Conclusion: A Market Regime Shift
 
@@ -273,7 +273,7 @@ This experiment provides **empirical evidence** of a fundamental market regime s
 - **Pre-2014**: Currency markets were driven primarily by traditional macro fundamentals (interest rates, trade balances, central bank policy). Bitcoin did not exist as a meaningful asset class.
 - **Post-2014**: The rise of cryptocurrency as a global asset class introduced Bitcoin as a powerful **proxy for global risk appetite and liquidity conditions**. Bitcoin's correlation with emerging market currencies (including KRW) during risk-on/risk-off events makes it an indispensable feature.
 
-> **The decision to discard pre-2014 data is not a limitation — it is a data-driven design choice, validated by a 22 percentage-point AUC-ROC gap (0.74 vs 0.52) between keeping and removing Bitcoin.**
+> **The decision to discard pre-2014 data is not a limitation it is a data-driven design choice, validated by a 22 percentage-point AUC-ROC gap (0.74 vs 0.52) between keeping and removing Bitcoin.**
 
 *The full experiment code is available in [`experiment_bitcoin.py`](experiment_bitcoin.py).*
 
