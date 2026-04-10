@@ -17,7 +17,7 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
 | **Weighted F1-Score** | **0.81** |
 | **Optimal Threshold** | 0.65 |
 
-> The model was evaluated on a **15% hold-out test set** (unseen future data) with `shuffle=False` to prevent temporal data leakage — a critical requirement for time-series forecasting.
+> The model was evaluated on a **15% hold-out test set** (unseen future data) with `shuffle=False` to prevent temporal data leakage a critical requirement for time-series forecasting.
 
 ## Feature Engineering
 
@@ -69,20 +69,20 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
 
 ### v2 Initial → v2 Final: Feature Engineering Overhaul
 - **Dropped pre-Bitcoin era** (before Sep 2014): Eliminated 1,718 rows where Bitcoin=NaN was filled with 0, which produced false signals in `pct_change()` calculations
-- **Multi-Horizon Returns**: Replaced daily `pct_change()` with rolling returns over 5, 10, 20, and 60-day windows — more relevant for a 63-day prediction horizon
+- **Multi-Horizon Returns**: Replaced daily `pct_change()` with rolling returns over 5, 10, 20, and 60-day windows more relevant for a 63-day prediction horizon
 - **Regime Detection**: Added binary features checking if USD/Gold/SP500 are above their 200-day SMA (risk-on vs risk-off market environment)
-- **Macro Z-Scores**: Normalized Interest Rate, Treasury Yield, CPI, and Unemployment against their 252-day rolling statistics — captures "is this historically high or low?"
+- **Macro Z-Scores**: Normalized Interest Rate, Treasury Yield, CPI, and Unemployment against their 252-day rolling statistics captures "is this historically high or low?"
 - **Spread Features**: Added Gold/Silver ratio (safe-haven proxy), KRW momentum, and cross-market divergence signals
 - **Proper Train/Test Split**: Added `shuffle=False` hold-out test set (15%) to evaluate on truly unseen future data
 - **Result**: Accuracy jumped from 46% → 68.4%, AUC-ROC reached 0.798
 
 ### v2 Final → v3: Training Pipeline & Threshold Optimization
 - **Purged Train-Test Gap**: Added a 63-day gap between training and test data to prevent target leakage (since our target looks 63 days into the future)
-- **TimeSeriesSplit with Gap**: Internal cross-validation also respects the 63-day gap — making CV scores more realistic
-- **Early Stopping**: Replaced GridSearchCV (1,080 iterations) with manual hyperparameters + `early_stopping_rounds=50` — faster training and automatic overfitting prevention
+- **TimeSeriesSplit with Gap**: Internal cross-validation also respects the 63-day gap making CV scores more realistic
+- **Early Stopping**: Replaced GridSearchCV (1,080 iterations) with manual hyperparameters + `early_stopping_rounds=50` faster training and automatic overfitting prevention
 - **L2 Regularization** (`reg_lambda=2`) **+ Gamma** (`gamma=1`): Makes the model more conservative, penalizing overly complex trees
 - **Volatility Feature**: Added `KRW_vol_20d` — 20-day rolling standard deviation of KRW returns, capturing market panic/anomaly periods
-- **Threshold Optimization**: Searched for the optimal probability cutoff (found at 0.65 instead of default 0.50) — the model requires ≥65% confidence before predicting "KRW weakens", which dramatically improved accuracy from 57.8% → 83.2%
+- **Threshold Optimization**: Searched for the optimal probability cutoff (found at 0.65 instead of default 0.50) the model requires ≥65% confidence before predicting "KRW weakens", which dramatically improved accuracy from 57.8% → 83.2%
 - **SHAP Explainability**: Added real-time feature contribution visualization in the dashboard
 - **Result**: Accuracy reached 83.2%, AUC-ROC improved to 0.847
 
