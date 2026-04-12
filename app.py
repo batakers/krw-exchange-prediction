@@ -26,7 +26,7 @@ DEFAULT_THRESHOLD = 0.55
 def build_features_for_prediction(data_path):
     """
     Replicates the exact feature engineering pipeline from train_model.py v3,
-    but WITHOUT creating a Target column — used for live prediction only.
+    but WITHOUT creating a Target column used for live prediction only.
     """
     df = pd.read_csv(data_path, thousands=',')
     if 'Unnamed: 0' in df.columns:
@@ -51,7 +51,7 @@ def build_features_for_prediction(data_path):
         for window in [5, 10, 20, 60]:
             df[f'{col}_ret_{window}d'] = df[col].pct_change(window)
 
-    # Volatility feature — captures market panic/anomalies
+    # Volatility feature captures market panic/anomalies
     df['KRW_vol_20d'] = df['KRW'].pct_change().rolling(20).std()
 
     # Regime feature: is USD above its SMA-200?
@@ -66,7 +66,7 @@ def build_features_for_prediction(data_path):
     df['Gold_Silver_ratio'] = df['Gold'] / df['Silver']
     df['KRX_SP500_spread'] = df['KRX'].pct_change(20) - df['SP500'].pct_change(20)
 
-    # Exclude raw price/macro levels — only use derived features
+    # Exclude raw price/macro levels only use derived features
     exclude = set(price_cols + macro_cols)
     feature_cols = [c for c in df.columns if c not in exclude]
 
@@ -230,7 +230,7 @@ with tab1:
                 vol_col3.metric("Volatility (1σ)", f"±{std_move:.2f}%",
                                help="📈 Standard deviation (σ) of 63-day returns. "
                                     "The larger this number, the wilder the market swings. "
-                                    "Computed from the statistical distribution of historical returns — "
+                                    "Computed from the statistical distribution of historical returns "
                                     "not an ML prediction, but a hard fact from raw data.")
 
                 # Visual: expected range
@@ -290,7 +290,7 @@ with tab1:
                 try:
                     import shap
 
-                    # TreeExplainer is optimized for XGBoost — instant computation
+                    # TreeExplainer is optimized for XGBoost instant computation
                     explainer = shap.TreeExplainer(model)
                     shap_values = explainer.shap_values(latest_row)
 
@@ -361,7 +361,7 @@ with tab2:
 
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Test Accuracy", "80.5%", help="Percentage of correct predictions on unseen test data (with optimized threshold)")
-        col2.metric("Test AUC-ROC", "0.746", help="Area Under ROC Curve — 0.5 = random, 1.0 = perfect")
+        col2.metric("Test AUC-ROC", "0.746", help="Area Under ROC Curve 0.5 = random, 1.0 = perfect")
         col3.metric("Weighted F1", "0.78", help="Harmonic mean of precision and recall (weighted)")
         col4.metric("Threshold", f"{saved_threshold}", help="Optimized decision threshold for classification")
         col5.metric("Algorithm", "XGBoost v3", help="Gradient boosted trees with early stopping & L2 regularization")
@@ -527,7 +527,7 @@ with tab2:
         # ── 5b. Backtesting on Hold-out Test Set ─────────
         st.markdown("#### 5b. Backtesting on Unseen Test Data")
         st.caption("The model was trained on 85% of data (pre-2024). These predictions were made "
-                   "on the remaining 15% — data the model had **never seen during training**.")
+                   "on the remaining 15% data the model had **never seen during training**.")
 
         try:
             df_raw, df_features, feature_cols = build_features_for_prediction(DATA_PATH)
