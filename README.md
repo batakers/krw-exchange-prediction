@@ -101,6 +101,17 @@ The Walk-Forward average (53.9%) is significantly lower than the hold-out test (
 
 ---
 
+### ⚠️ Model Limitations & Market Realities
+
+While this project demonstrates strong predictive power based on macroeconomic fundamentals, real-world forex markets are influenced by factors beyond pure data. We transparently acknowledge the following operational blindspots:
+
+1. **Central Bank Interventions**: The Bank of Korea (BOK) actively intervenes in the FX market to stabilize the Won when it hits psychological levels (e.g., 1,400 or 1,450). A purely macro-driven ML model is blind to these political support/resistance actions.
+2. **Geopolitical Shocks**: Fluctuations driven by unexpected geopolitical events (e.g., North Korean tensions) are not instantly captured by historical numeric features.
+3. **Forex Spreads (Tourist Warning)**: While the model might predict a 1% strengthening of the KRW, physical money changers and retail banks typically charge a 2% to 4% transaction spread. Travelers should only delay currency exchange if the predicted movement magnitude clearly outweighs the bank's spread costs.
+4. **Holiday Liquidity Gaps**: Major Korean holidays (Chuseok and Seollal) cause severe drops in market liquidity, often leading to unpredictable price gaps when markets reopen. The model currently treats these days as standard trading periods.
+
+---
+
 ### v1: The Starting Point (Random Forest, 6-Month Horizon)
 
 The project began with a simple goal: predict whether the Korean Won would weaken or strengthen **6 months (~126 trading days) into the future** using a `RandomForestClassifier`. The features were basic: daily percentage changes (`pct_change()`) and 30-day Simple Moving Averages (SMA-30) across 12 global economic indicators.
