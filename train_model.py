@@ -57,9 +57,15 @@ def load_and_preprocess_data(filepath):
 
     # ── Target ──
     shift_days = 63
-    df['Target'] = (df['KRW'].shift(-shift_days) > df['KRW']).astype(int)
+    future_krw = df['KRW'].shift(-shift_days)
+    df['Target'] = (future_krw > df['KRW']).astype(float)
+    # The last `shift_days` rows have no observed future rate. Comparing NaN
+    # returns False, which would silently label them 0 ("KRW strengthens"),
+    # so mark them as missing and let dropna() remove them.
+    df.loc[future_krw.isna(), 'Target'] = np.nan
 
     df_clean = df.dropna().copy()
+    df_clean['Target'] = df_clean['Target'].astype(int)
     features = [c for c in df_clean.columns if c not in
                 set(price_cols + macro_cols + ['Target'])]
     
@@ -127,20 +133,33 @@ def train_model_v3(X, y):
         early_stopping_rounds=50
     )
 
-    # Split a validation set from train for early stopping
-    X_tr, X_val, y_tr, y_val = train_test_split(X_train, y_train, test_size=0.1, shuffle=False)
+    # Split the last 10% of train into a validation window (for early stopping
+    # and threshold selection), with the same 63-day purge gap before it.
+    n_val = int(np.ceil(len(X_train) * 0.1))
+    X_val, y_val = X_train.iloc[-n_val:], y_train.iloc[-n_val:]
+    X_tr, y_tr = X_train.iloc[:-(n_val + gap)], y_train.iloc[:-(n_val + gap)]
 
     print("Training Classifier with Early Stopping...")
     model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=100)
 
-    # Get probabilities on test set
+    # Get probabilities on validation and test sets
+    val_probs = model.predict_proba(X_val)[:, 1]
     probs = model.predict_proba(X_test)[:, 1]
 
-    # ── Find optimal threshold ──────────────────
+    # ── Find optimal threshold (on VALIDATION, never on test) ──
     print("\n" + "=" * 50)
-    print("THRESHOLD OPTIMIZATION")
+    print("THRESHOLD OPTIMIZATION (validation window)")
     print("=" * 50)
-    optimal_threshold = find_optimal_threshold(y_test, probs)
+    optimal_threshold = find_optimal_threshold(y_val, val_probs)
+
+    # ── Naive baseline: always predict the training majority class ──
+    majority_class = int(y_train.mean() >= 0.5)
+    baseline_acc = accuracy_score(y_test, np.full(len(y_test), majority_class))
+    # Stricter bar: the best constant guess for the test period (only knowable in hindsight)
+    best_constant_acc = max(y_test.mean(), 1 - y_test.mean())
+    print(f"\n  Test period: {X_test.index[0].date()} to {X_test.index[-1].date()} ({len(X_test)} rows)")
+    print(f"  Training-majority baseline (always {majority_class}): {baseline_acc:.4f}")
+    print(f"  Best constant guess on test period (hindsight): {best_constant_acc:.4f}")
 
     # ── Results with DEFAULT threshold (0.5) ────
     preds_default = model.predict(X_test)
@@ -154,13 +173,26 @@ def train_model_v3(X, y):
     # ── Results with OPTIMAL threshold ──────────
     preds_optimal = (probs >= optimal_threshold).astype(int)
     print(f"{'='*50}")
-    print(f"RESULTS — Optimal Threshold ({optimal_threshold})")
+    print(f"RESULTS — Validation-Selected Threshold ({optimal_threshold})")
     print(f"{'='*50}")
     print(f"  Accuracy : {accuracy_score(y_test, preds_optimal):.4f}")
     print(f"  AUC-ROC  : {roc_auc_score(y_test, probs):.4f}")
     print(f"\n{classification_report(y_test, preds_optimal)}")
 
-    return model, optimal_threshold
+    holdout_metrics = {
+        'accuracy': round(accuracy_score(y_test, preds_optimal), 4),
+        'accuracy_default_threshold': round(accuracy_score(y_test, preds_default), 4),
+        'auc_roc': round(roc_auc_score(y_test, probs), 4),
+        'f1_weighted': round(f1_score(y_test, preds_optimal, average='weighted'), 4),
+        'baseline_accuracy': round(baseline_acc, 4),
+        'best_constant_accuracy': round(best_constant_acc, 4),
+        'threshold': optimal_threshold,
+        'test_start': str(X_test.index[0].date()),
+        'test_end': str(X_test.index[-1].date()),
+        'test_rows': len(X_test),
+    }
+
+    return model, optimal_threshold, holdout_metrics
 
 # ─────────────────────────────────────────────
 # 4. WALK-FORWARD VALIDATION (Nested CV)
@@ -260,6 +292,11 @@ def walk_forward_validation(df, features, target, threshold=0.65):
         # Calculate metrics
         acc = accuracy_score(y_test_wf, preds_wf)
         f1_w = f1_score(y_test_wf, preds_wf, average='weighted')
+        # Naive baseline: always predict the majority class of this fold's training data
+        majority_wf = int(y_train_wf.mean() >= 0.5)
+        baseline_wf = accuracy_score(y_test_wf, np.full(len(y_test_wf), majority_wf))
+        # Stricter bar: best constant guess for this test fold (hindsight)
+        best_constant_wf = max(y_test_wf.mean(), 1 - y_test_wf.mean())
         try:
             auc = roc_auc_score(y_test_wf, probs_wf)
         except ValueError:
@@ -283,6 +320,8 @@ def walk_forward_validation(df, features, target, threshold=0.65):
             'Train Period': f'{df.index[train_index[0]].strftime("%Y-%m")} to {df.index[train_index[-1]].strftime("%Y-%m")}',
             'Test Period': f'{test_start} to {test_end}',
             'Accuracy': round(acc, 4),
+            'Baseline Acc': round(baseline_wf, 4),
+            'Best Constant Acc': round(best_constant_wf, 4),
             'AUC-ROC': round(auc, 4),
             'F1-Weighted': round(f1_w, 4),
             'Samples': len(X_test_wf),
@@ -309,6 +348,8 @@ def walk_forward_validation(df, features, target, threshold=0.65):
         print(f"  Average Accuracy: {mean_acc*100:.1f}% (±{std_acc*100:.1f}%)")
         print(f"  Average AUC-ROC:  {mean_auc:.4f} (±{std_auc:.4f})")
         print(f"  Average F1-Score: {mean_f1:.4f} (±{std_f1:.4f})")
+        print(f"  Average Training-Majority Baseline: {np.mean([r['Baseline Acc'] for r in results])*100:.1f}%")
+        print(f"  Average Best Constant Guess (hindsight): {np.mean([r['Best Constant Acc'] for r in results])*100:.1f}%")
 
     return results
 
@@ -322,15 +363,16 @@ if __name__ == "__main__":
         X, y = df[features], df[target]
         
         # Train classifier (direction prediction)
-        best_model, threshold = train_model_v3(X, y)
+        best_model, threshold, holdout_metrics = train_model_v3(X, y)
 
         # Walk-Forward Validation (Nested CV)
         wf_results = walk_forward_validation(df, features, target, threshold)
-        
+
         joblib.dump({
-            'model': best_model, 
+            'model': best_model,
             'features': features,
             'threshold': threshold,
+            'holdout_metrics': holdout_metrics,
             'walk_forward_results': wf_results
         }, 'best_model_v3.pkl')
         print(f"\nModel v3 saved with optimal threshold={threshold}")
