@@ -196,34 +196,20 @@ if __name__ == "__main__":
     print("╔══════════════════════════════════════════════════════════════════╗")
     print("║                    FINAL COMPARISON                            ║")
     print("╠══════════════════════════════════════════════════════════════════╣")
-    print(f"║  {'Scenario':<28} {'Accuracy':>10} {'AUC-ROC':>10} {'Samples':>10}  ║")
-    print(f"║  {'─'*28} {'─'*10} {'─'*10} {'─'*10}  ║")
+    print(f"║  {'Scenario':<26} {'Accuracy':>9} {'Constant':>9} {'AUC-ROC':>8} {'Samples':>8} ║")
+    print(f"║  {'─'*26} {'─'*9} {'─'*9} {'─'*8} {'─'*8} ║")
     for r in [result_a, result_b, result_c]:
         acc_str = f"{r['Accuracy']*100:.1f}%"
-        print(f"║  {r['Scenario']:<28} {acc_str:>10} {r['AUC-ROC']:>10.4f} {r['Samples']:>10}  ║")
+        const_str = f"{r['Best Constant Acc']*100:.1f}%"
+        print(f"║  {r['Scenario']:<26} {acc_str:>9} {const_str:>9} {r['AUC-ROC']:>8.4f} {r['Samples']:>8} ║")
     print("╠══════════════════════════════════════════════════════════════════╣")
 
-    # Determine winner
-    results = [result_a, result_b, result_c]
-    best = max(results, key=lambda x: x['AUC-ROC'])
-    print(f"║  🏆 WINNER (by AUC-ROC): {best['Scenario']:<38} ║")
-    
-    if best == result_b:
-        print("║                                                                  ║")
-        print("║  CONCLUSION: Dropping Bitcoin and using full 2008-2025 data       ║")
-        print("║  is BETTER. The 2008 crisis data provides more value than         ║") 
-        print("║  Bitcoin as a feature. Market structure has NOT changed enough     ║")
-        print("║  to justify losing 14 years of macro history.                     ║")
-    elif best == result_a:
-        print("║                                                                  ║")
-        print("║  CONCLUSION: Keeping Bitcoin with 2014+ data is BETTER.           ║")
-        print("║  This proves that post-2014 market structure has fundamentally    ║")
-        print("║  changed, and Bitcoin is an essential feature for modern FX       ║")
-        print("║  prediction. The 2008 crisis data is no longer relevant.          ║")
-    else:
-        print("║                                                                  ║")
-        print("║  CONCLUSION: The HYBRID approach wins! Full history with          ║")
-        print("║  Bitcoin (zero-filled pre-2014) gives the best of both worlds:    ║")
-        print("║  2008 crisis wisdom + modern crypto signal.                       ║")
-
+    # No automatic "winner": each scenario is scored on its own last 15%,
+    # so the test windows differ and one hold-out per scenario is not enough
+    # to rank them. Compare each row with its own constant-guess baseline.
+    beats = [r['Scenario'].split(':')[0] for r in [result_a, result_b, result_c]
+             if r['Accuracy'] > r['Best Constant Acc']]
+    print("║  'Constant' = accuracy of always predicting the test window's   ║")
+    print("║  majority class. Test windows differ between scenarios.         ║")
+    print(f"║  Beat their constant baseline: {', '.join(beats) if beats else 'none':<34}║")
     print("╚══════════════════════════════════════════════════════════════════╝")

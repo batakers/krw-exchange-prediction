@@ -128,6 +128,13 @@ with tab1:
         threshold = model_data.get('threshold', DEFAULT_THRESHOLD)
 
         st.subheader("🚀 Predict from Latest Available Data")
+        hm_pred = model_data.get('holdout_metrics', {})
+        if (hm_pred.get('accuracy') is not None and hm_pred.get('best_constant_accuracy') is not None
+                and hm_pred['accuracy'] <= hm_pred['best_constant_accuracy']):
+            st.warning(f"⚠️ On its unseen hold-out period this model scored {hm_pred['accuracy']*100:.1f}% accuracy, "
+                       f"below the {hm_pred['best_constant_accuracy']*100:.1f}% of a constant guess "
+                       f"(AUC-ROC {hm_pred.get('auc_roc', float('nan')):.2f}). Treat the prediction below as a demo "
+                       "of the pipeline, not as a basis for currency or travel decisions. Details in Model Insights.")
         st.info("💡 This prediction engine reads the **most recent row** from the dataset, "
                 "applies the same feature engineering pipeline used during training "
                 "(multi-horizon returns, volatility, regime detection, macro z-scores), "
@@ -456,15 +463,15 @@ with tab2:
         st.markdown("---")
 
         # ── 5. Real-World Validation ─────────────────────
-        st.subheader("5. 🏆 Real-World Validation: Proof the Model Works")
-        st.markdown("Trust is earned, not claimed. This section provides **transparent evidence** "
-                     "of the model's predictive power against actual market movements.")
+        st.subheader("5. 🔍 Real-World Validation: Does the Model Work?")
+        st.markdown("Trust is earned, not claimed. This section scores the model against actual market movements "
+                     "and against simple constant-guess baselines.")
 
         # ── 5a. Walk-Forward Validation ──────────────────
         st.markdown("#### 5a. Walk-Forward Validation (Expanding Window Backtesting)")
         st.caption("The model is retrained from scratch for each test year using an expanding window. "
-                   "This proves whether performance is consistent across different market regimes, "
-                   "not just a lucky result on one specific test period.")
+                   "This shows whether performance holds up across different market regimes, "
+                   "not just on one specific test period.")
 
         wf_results = model_data.get('walk_forward_results', None)
         if wf_results and len(wf_results) > 0:
@@ -632,15 +639,21 @@ with tab2:
             else:
                 st.markdown("**🤖 Model's Prediction (Jan 9, 2025):** unavailable for this model file.")
         with case_col2:
-            st.markdown("""
+            if case_call is None:
+                verdict = "KRW **weakened** at the model's 63-day horizon."
+            elif case_call.startswith("Weakens"):
+                verdict = "KRW **weakened**, so the \"weaken\" call was **correct** ✅"
+            else:
+                verdict = "KRW **weakened**, so the \"strengthen\" call was **incorrect** ❌"
+            st.markdown(f"""
             **📊 What Actually Happened (market USD/KRW):**
-            - Early Jan 2025: USD/KRW ≈ **1,460**
+            - Jan 9, 2025: USD/KRW **1,459.23** (FRED DEXKOUS)
             - Apr 9, 2025 (≈ +63 trading days, the model's horizon): closed at **1,484.1**, the won's weakest level since March 2009
             - The won only recovered later in Q2 2025, after the 3-month window had closed
-            - Result at the model's 63-day horizon: KRW **weakened**, so a "strengthen" call was **incorrect** ❌
+            - Result at the model's 63-day horizon: {verdict}
             """)
-            st.caption("⚠️ The `KRW` column in this dataset does not track the market USD/KRW rate after ~2015 "
-                       "(e.g. ~1,127 on Jan 9, 2025 vs ~1,460 in the market). See the README data note.")
+            st.caption("Data: USD/KRW from FRED series DEXKOUS (noon buying rate in New York); "
+                       "KOSPI from Yahoo Finance ^KS11. See the README data section.")
 
         # Visual chart with prediction annotation
         try:
@@ -652,11 +665,11 @@ with tab2:
             fig_val = go.Figure()
             fig_val.add_trace(go.Scatter(
                 x=df_chart['Date'], y=df_chart['KRW'],
-                mode='lines', name='Dataset KRW',
+                mode='lines', name='USD/KRW',
                 line=dict(color='#00ff9d', width=2)
             ))
 
-            # Prediction point annotation (anchored on the dataset's own value for that day)
+            # Prediction point annotation (anchored on the USD/KRW value for that day)
             last_val = float(df_chart.loc[df_chart['Date'] == '2025-01-09', 'KRW'].iloc[-1])
             if case_prob is not None:
                 fig_val.add_annotation(
@@ -681,8 +694,8 @@ with tab2:
             )
 
             fig_val.update_layout(
-                title="Dataset `KRW` Column with Model Prediction Overlay",
-                xaxis_title="Time", yaxis_title="Dataset KRW value",
+                title="USD/KRW Exchange Rate with Model Prediction Overlay",
+                xaxis_title="Time", yaxis_title="KRW per 1 USD",
                 template="plotly_dark", height=450,
                 margin=dict(l=0, r=0, t=40, b=0)
             )
