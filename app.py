@@ -275,7 +275,8 @@ with tab1:
                 col_b.metric("Decision Threshold", f"{threshold_pct:.0f}%",
                             help="⚖️ The optimized decision boundary. "
                                  "If probability ≥ threshold → prediction is 'Weaken'. "
-                                 "This threshold was found via exhaustive search on the test set to maximize accuracy.")
+                                 "This threshold was chosen on a validation window before the test period, "
+                                 "so the test set stays untouched.")
                 col_c.metric("Verdict", "WEAKEN" if prediction == 1 else "STRENGTHEN",
                              delta=f"{prob_pct - threshold_pct:+.1f}% vs threshold",
                              delta_color="normal" if prediction == 1 else "inverse")
@@ -359,11 +360,21 @@ with tab2:
         # ── 1. Model Performance Metrics ─────────────────
         st.subheader("1. Model Performance Summary")
 
+        hm = model_data.get('holdout_metrics', {})
+        fmt_pct = lambda v: f"{v*100:.1f}%" if v is not None else "n/a"
+        fmt_num = lambda v: f"{v:.3f}" if v is not None else "n/a"
+
         col1, col2, col3, col4, col5 = st.columns(5)
-        col1.metric("Test Accuracy", "80.5%", help="Percentage of correct predictions on unseen test data (with optimized threshold)")
-        col2.metric("Test AUC-ROC", "0.746", help="Area Under ROC Curve 0.5 = random, 1.0 = perfect")
-        col3.metric("Weighted F1", "0.78", help="Harmonic mean of precision and recall (weighted)")
-        col4.metric("Threshold", f"{saved_threshold}", help="Optimized decision threshold for classification")
+        col1.metric("Test Accuracy", fmt_pct(hm.get('accuracy')),
+                    delta=(f"{(hm['accuracy'] - hm['best_constant_accuracy'])*100:+.1f} pts vs constant guess"
+                           if 'accuracy' in hm and 'best_constant_accuracy' in hm else None),
+                    help="Correct predictions on the unseen hold-out period, using the validation-selected threshold. "
+                         "Delta compares against the best constant guess for that period.")
+        col2.metric("Test AUC-ROC", fmt_num(hm.get('auc_roc')), help="Area Under ROC Curve 0.5 = random, 1.0 = perfect")
+        col3.metric("Best Constant Guess", fmt_pct(hm.get('best_constant_accuracy')),
+                    help="Accuracy of always predicting whichever direction was more common in the test period. "
+                         "Only knowable in hindsight, so it is a strict bar for the model to beat.")
+        col4.metric("Threshold", f"{saved_threshold}", help="Decision threshold chosen on the validation window (not the test set)")
         col5.metric("Algorithm", "XGBoost v3", help="Gradient boosted trees with early stopping & L2 regularization")
 
         st.markdown("---")
@@ -515,6 +526,13 @@ with tab2:
             # Detailed table
             display_wf = wf_df.copy()
             display_wf['Accuracy'] = [f"{a*100:.1f}%" for a in wf_df['Accuracy']]
+            if 'Baseline Acc' in wf_df.columns:
+                display_wf['Baseline Acc'] = [f"{a*100:.1f}%" for a in wf_df['Baseline Acc']]
+            if 'Best Constant Acc' in wf_df.columns:
+                display_wf['Best Constant Acc'] = [f"{a*100:.1f}%" for a in wf_df['Best Constant Acc']]
+                st.caption(f"Average best constant guess across folds: {wf_df['Best Constant Acc'].mean()*100:.1f}% "
+                           "(always predicting whichever direction was more common in each test fold, known only in hindsight). "
+                           "'Baseline Acc' is the fairer, non-hindsight version: always predicting the training majority.")
             display_wf['AUC-ROC'] = [f"{a:.4f}" for a in wf_df['AUC-ROC']]
             display_wf['F1-Weighted'] = [f"{a:.4f}" for a in wf_df['F1-Weighted']]
             st.dataframe(display_wf.set_index('Fold'), use_container_width=True)
@@ -526,8 +544,9 @@ with tab2:
 
         # ── 5b. Backtesting on Hold-out Test Set ─────────
         st.markdown("#### 5b. Backtesting on Unseen Test Data")
-        st.caption("The model was trained on 85% of data (pre-2024). These predictions were made "
-                   "on the remaining 15% data the model had **never seen during training**.")
+        st.caption("The model was trained on the first 85% of labelled data (up to early 2023, with a 63-day gap). "
+                   "These predictions were made on the remaining 15% the model had **never seen during training**. "
+                   "Days without an observed 63-day outcome are excluded.")
 
         try:
             df_raw, df_features, feature_cols = build_features_for_prediction(DATA_PATH)
@@ -541,13 +560,16 @@ with tab2:
             # Rebuild target from raw data
             df_raw_sorted = df_raw.sort_index()
             df_raw_post = df_raw_sorted[df_raw_sorted.index >= '2014-09-17']
-            target_series = (df_raw_post['KRW'].shift(-63) > df_raw_post['KRW']).astype(int)
+            future_krw = df_raw_post['KRW'].shift(-63)
+            target_series = (future_krw > df_raw_post['KRW']).astype(float)
+            # Rows without an observed 63-day future have no real outcome yet
+            target_series[future_krw.isna()] = np.nan
             target_series.name = 'Target'
 
             # Align indices
             common_idx = df_model.index.intersection(target_series.dropna().index)
             df_model = df_model.loc[common_idx]
-            y_all = target_series.loc[common_idx]
+            y_all = target_series.loc[common_idx].astype(int)
 
             # Same split as training
             X_train, X_test, y_train, y_test = tts(df_model, y_all, test_size=0.15, shuffle=False)
@@ -589,22 +611,36 @@ with tab2:
         # ── 5b. Case Study: January 2025 Prediction ──────
         st.markdown("#### 5c. Case Study: January 9, 2025 Prediction")
 
+        # Compute the deployed model's call for Jan 9, 2025 instead of hardcoding it
+        case_prob = None
+        try:
+            _, df_feat_case, _ = build_features_for_prediction(DATA_PATH)
+            case_row = df_feat_case.loc[['2025-01-09'], feature_names]
+            case_prob = float(rf_model.predict_proba(case_row)[:, 1][0])
+        except Exception:
+            pass
+        case_call = None if case_prob is None else ("Weakens (↑)" if case_prob >= saved_threshold else "Strengthens (↓)")
+
         case_col1, case_col2 = st.columns(2)
         with case_col1:
-            st.markdown("""
-            **🤖 Model's Prediction (Jan 9, 2025):**
-            - Direction: **KRW Strengthens** (↓)
-            - Probability of Weakening: **31.5%**
-            - Confidence: The model was **68.5% confident** that KRW would strengthen
-            """)
+            if case_prob is not None:
+                st.markdown(f"""
+                **🤖 Model's Prediction (Jan 9, 2025):**
+                - Direction: **KRW {case_call}**
+                - Probability of Weakening: **{case_prob*100:.1f}%** (threshold {saved_threshold})
+                """)
+            else:
+                st.markdown("**🤖 Model's Prediction (Jan 9, 2025):** unavailable for this model file.")
         with case_col2:
             st.markdown("""
-            **📊 What Actually Happened:**
-            - Jan 2025: USD/KRW ≈ **1,460**
-            - Apr 2025 (+63 days): USD/KRW ≈ **1,420**
-            - May 2025: USD/KRW ≈ **1,383**
-            - Result: KRW **strengthened significantly** ✅
+            **📊 What Actually Happened (market USD/KRW):**
+            - Early Jan 2025: USD/KRW ≈ **1,460**
+            - Apr 9, 2025 (≈ +63 trading days, the model's horizon): closed at **1,484.1**, the won's weakest level since March 2009
+            - The won only recovered later in Q2 2025, after the 3-month window had closed
+            - Result at the model's 63-day horizon: KRW **weakened**, so a "strengthen" call was **incorrect** ❌
             """)
+            st.caption("⚠️ The `KRW` column in this dataset does not track the market USD/KRW rate after ~2015 "
+                       "(e.g. ~1,127 on Jan 9, 2025 vs ~1,460 in the market). See the README data note.")
 
         # Visual chart with prediction annotation
         try:
@@ -616,35 +652,37 @@ with tab2:
             fig_val = go.Figure()
             fig_val.add_trace(go.Scatter(
                 x=df_chart['Date'], y=df_chart['KRW'],
-                mode='lines', name='USD/KRW',
+                mode='lines', name='Dataset KRW',
                 line=dict(color='#00ff9d', width=2)
             ))
 
-            # Prediction point annotation
-            fig_val.add_annotation(
-                x='2025-01-09', y=1460,
-                text="🤖 Model Predicts:<br><b>KRW Strengthens</b><br>(31.5% weaken prob)",
-                showarrow=True, arrowhead=2, arrowcolor="#3b82f6",
-                ax=-120, ay=-60,
-                font=dict(size=12, color="white"),
-                bgcolor="rgba(59, 130, 246, 0.3)",
-                bordercolor="#3b82f6", borderwidth=1, borderpad=6
-            )
+            # Prediction point annotation (anchored on the dataset's own value for that day)
+            last_val = float(df_chart.loc[df_chart['Date'] == '2025-01-09', 'KRW'].iloc[-1])
+            if case_prob is not None:
+                fig_val.add_annotation(
+                    x='2025-01-09', y=last_val,
+                    text=f"🤖 Model Predicts:<br><b>KRW {case_call}</b><br>({case_prob*100:.1f}% weaken prob)",
+                    showarrow=True, arrowhead=2, arrowcolor="#3b82f6",
+                    ax=-120, ay=-60,
+                    font=dict(size=12, color="white"),
+                    bgcolor="rgba(59, 130, 246, 0.3)",
+                    bordercolor="#3b82f6", borderwidth=1, borderpad=6
+                )
 
-            # Actual outcome annotation
+            # Actual outcome annotation (market rate; outside the dataset's date range)
             fig_val.add_annotation(
-                x='2025-01-09', y=1420,
-                text="📊 Actual: KRW<br><b>Strengthened to ~1,420</b><br>Prediction: ✅ Correct",
-                showarrow=True, arrowhead=2, arrowcolor="#22c55e",
+                x='2025-01-09', y=last_val,
+                text="📊 Market, Apr 9, 2025 (+63 days):<br><b>USD/KRW 1,484.1, KRW weakened</b><br>Prediction at 3-month horizon: ❌",
+                showarrow=True, arrowhead=2, arrowcolor="#ef4444",
                 ax=120, ay=60,
                 font=dict(size=12, color="white"),
-                bgcolor="rgba(34, 197, 94, 0.3)",
-                bordercolor="#22c55e", borderwidth=1, borderpad=6
+                bgcolor="rgba(239, 68, 68, 0.3)",
+                bordercolor="#ef4444", borderwidth=1, borderpad=6
             )
 
             fig_val.update_layout(
-                title="USD/KRW Exchange Rate with Model Prediction Overlay",
-                xaxis_title="Time", yaxis_title="KRW per 1 USD",
+                title="Dataset `KRW` Column with Model Prediction Overlay",
+                xaxis_title="Time", yaxis_title="Dataset KRW value",
                 template="plotly_dark", height=450,
                 margin=dict(l=0, r=0, t=40, b=0)
             )
@@ -657,5 +695,5 @@ with tab2:
 
 st.markdown("---")
 st.markdown("*KRW Movement Prediction Dashboard - Powered by XGBoost v3 with advanced feature engineering, "
-            "early stopping, L2 regularization, and optimized threshold. "
-            "Model evaluated on unseen test data (Accuracy: 80.5%, AUC-ROC: 0.746).*")
+            "early stopping, L2 regularization, and a validation-selected threshold. "
+            "See Model Insights for hold-out and walk-forward results against a majority-class baseline.*")
