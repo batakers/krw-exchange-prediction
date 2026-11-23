@@ -8,23 +8,25 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
 - **Target variable**: `1` if USD/KRW increases (KRW weakens), `0` otherwise.
 - **Goal**: Provide actionable insights for travel and forex decisions.
 
-## Model Performance (v3.1  XGBoost, corrected evaluation)
+## Model Performance (v3.2  XGBoost, corrected evaluation on real market data)
 
-> **Update (Nov 2026):** The earlier headline of 80.5% accuracy came from an evaluation with two bugs: the last 63 rows of the hold-out set had no real 3-month outcome but were labelled "strengthen", and the decision threshold was tuned on the test set itself. Both are fixed and the numbers below come from the corrected pipeline. Details in [Evaluation Fixes (Nov 2026)](#evaluation-fixes-nov-2026).
+> **Update (Nov 2026):** Two audits changed this project's results.
+> 1. **Evaluation bugs** (fixed in v3.1): the last 63 rows of the hold-out set had no real 3-month outcome but were labelled "strengthen", and the decision threshold was tuned on the test set. See [Evaluation Fixes](#evaluation-fixes-nov-2026).
+> 2. **Wrong data** (fixed in v3.2): the `KRW` and `KRX` columns did not contain the real USD/KRW rate or KOSPI index. They are now replaced with FRED `DEXKOUS` and Yahoo Finance `^KS11`. See [Data Fix](#data-fix-nov-2026).
+>
+> **On the real data, the model shows no predictive skill.** The earlier 80.5% (and the 78.2% after the evaluation fix) were artifacts of the wrong KRW series.
 
 | Metric | Score |
 |---|---|
-| **Test Accuracy** (threshold chosen on validation) | **78.2%** |
-| **Best constant guess** (always "strengthen", known only in hindsight) | 72.7% |
-| **Test AUC-ROC** | **0.711** |
-| **Weighted F1-Score** | 0.76 |
-| **Recall for "KRW weakens"** | 0.37 |
-| **Threshold** (chosen on the validation window) | 0.60 |
-| **Test period** | 2023-06-08 to 2024-10-11 (344 trading days) |
+| **Test Accuracy** (threshold chosen on validation) | **41.3%** |
+| **Best constant guess** (always "weaken", known only in hindsight) | 64.0% |
+| **Training-majority guess** (always "weaken", no hindsight) | 64.0% |
+| **Test AUC-ROC** | **0.246** |
+| **Weighted F1-Score** | 0.41 |
+| **Threshold** (chosen on the validation window) | 0.45 |
+| **Test period** | 2023-06-08 to 2024-10-11 (344 trading days, 64% "KRW weakens") |
 
-> The model was evaluated on a **15% hold-out test set** (unseen future data) with `shuffle=False` and a 63-day purge gap. Because 72.7% of test days were "KRW strengthens", accuracy alone overstates skill: the model beats a constant guess by about 5.5 points and catches 37% of the "weaken" periods. AUC-ROC (0.71) is the more informative number. A **Lookahead Bias Fix** shifts government-released macro data (CPI, Unemployment) by 30 trading days to reflect real-world publication lag.
-
-> ⚠️ **Data note:** the `KRW` column in `data/XAU BTC Silver SP500 dataset.csv` tracks the market USD/KRW rate in 2008–2009 (peaks near 1,508 and 1,571) but diverges from about 2015 onward. For example, it reads ~1,125 at the end of 2024, when the market rate was around 1,450–1,470. All results in this README are on the dataset as provided and should be re-run once the KRW series is re-sourced (e.g. FRED `DEXKOUS` or Yahoo Finance `KRW=X`).
+> The model was evaluated on a **15% hold-out test set** (unseen future data) with `shuffle=False` and a 63-day purge gap. It scores 22.7 points below simply predicting "weaken" every day. An AUC-ROC of 0.25 means its ranking is *inverted* in this period: 22 of the 40 features relate to the target in the opposite direction in 2023–2024 compared with 2015–2022 (for example, 60-day Bitcoin returns have AUC 0.37 on the training period and 0.74 on the test period). Relationships learned in one regime did not carry over to the next. A **Lookahead Bias Fix** shifts government-released macro data (CPI, Unemployment) by 30 trading days to reflect real-world publication lag.
 
 ## Feature Engineering
 
@@ -43,7 +45,7 @@ This project predicts whether the Korean Won (KRW) exchange rate will weaken or 
 ## Key Technical Highlights
 - **Purged Time-Series Split**: 63-day gap between train and test sets (and before the validation window) to eliminate target leakage.
 - **Early Stopping**: XGBoost stops training when validation loss stagnates (prevents overfitting).
-- **Threshold Selection on Validation**: The probability cutoff is chosen on a purged validation window before the test period (0.60 in the current run), never on the test set. On the hold-out it moves accuracy from 71.8% (default 0.50) to 78.2%.
+- **Threshold Selection on Validation**: The probability cutoff is chosen on a purged validation window before the test period (0.45 in the current run), never on the test set.
 - **SHAP Explainability**: Real-time feature contribution breakdown explaining *why* the model makes each prediction.
 - **Lookahead Bias Fix**: Government-released macro data (CPI, Unemployment) shifted by 30 trading days to reflect real-world publication lag.
 - **Nested Cross-Validation**: `RandomizedSearchCV` embedded inside each Walk-Forward fold for dynamic hyperparameter optimization.
@@ -66,22 +68,24 @@ To prove that the hold-out accuracy is not just a "lucky final score", this proj
 
 | Fold | Train Period | Test Period | Accuracy | Training-majority baseline | Best constant | AUC-ROC | F1-Weighted |
 |---|---|---|---|---|---|---|---|
-| 1 | 2015-10 to 2017-01 | 2017-04 to 2018-10 | 60.1% | 50.7% | 50.7% | 0.666 | 0.592 |
-| 2 | 2015-10 to 2018-07 | 2018-10 to 2020-04 | 48.3% | 28.4% | 71.7% | 0.547 | 0.494 |
-| 3 | 2015-10 to 2020-01 | 2020-04 to 2021-10 | 50.9% | 64.0% | 64.0% | 0.610 | 0.503 |
-| 4 | 2015-10 to 2021-07 | 2021-10 to 2023-04 | 45.4% | 68.5% | 68.5% | 0.554 | 0.449 |
-| 5 | 2015-10 to 2023-01 | 2023-04 to 2024-10 | **73.0%** | 31.8% | 68.2% | **0.685** | **0.700** |
-| **Mean** | | | **55.5%** | 48.7% | 64.6% | **0.612** | **0.548** |
-| **Std** | | | ±10.0% | | | ±0.056 | ±0.089 |
+| 1 | 2015-10 to 2017-01 | 2017-04 to 2018-10 | 46.5% | 48.6% | 51.4% | 0.357 | 0.333 |
+| 2 | 2015-10 to 2018-07 | 2018-10 to 2020-04 | 47.8% | 32.5% | 67.5% | 0.409 | 0.455 |
+| 3 | 2015-10 to 2020-01 | 2020-04 to 2021-10 | 36.5% | 54.1% | 54.1% | 0.421 | 0.361 |
+| 4 | 2015-10 to 2021-07 | 2021-10 to 2023-04 | **69.3%** | 75.1% | 75.1% | **0.746** | **0.711** |
+| 5 | 2015-10 to 2023-01 | 2023-04 to 2024-10 | 44.1% | 60.4% | 60.4% | 0.403 | 0.444 |
+| **Mean** | | | **48.8%** | 54.1% | 61.7% | **0.467** | **0.461** |
+| **Std** | | | ±12.3% | | | ±0.158 | ±0.149 |
+
+*Std is the sample standard deviation across the five folds, as shown in the dashboard. `train_model.py` prints the population version (±11.0%, ±0.141, ±0.134).*
 
 ### Honest Interpretation
 
-- **AUC-ROC is above 0.50 in every fold (0.55–0.69).** The model ranks "weaken" days above "strengthen" days better than chance in every regime, so there is a real but weak signal.
-- **Accuracy is less convincing.** It beats the training-majority guess in 3 of 5 folds and the best constant guess in only 2 of 5 (folds 1 and 5). In folds 3 and 4, simply repeating the training majority would have scored higher.
-- **Fold 5 (most training data)** is the strongest at 73.0%, which is consistent with the model improving as it sees more data, but one fold is not enough to prove that trend.
-- The decision threshold (0.60) comes from the main model's validation window and is reused in every fold rather than re-tuned per fold.
+- **AUC-ROC is below 0.50 in four of five folds** (0.36–0.42), and only fold 4 (0.75) is clearly above chance. The mean of 0.47 is no better than random.
+- **Accuracy beats the training-majority guess in only 1 of 5 folds** (fold 2) and never beats the best constant guess. Repeating the most common recent direction would have done better than the model.
+- **The good fold does not repeat.** Fold 4 (late 2021 to early 2023, a strong-dollar period) looks promising on its own, but the next fold falls back to 0.40 AUC.
+- The decision threshold (0.45) comes from the main model's validation window and is reused in every fold rather than re-tuned per fold.
 
-> **Takeaway:** Treat this as a research prototype with a weak, consistent ranking signal, not as a tool for real currency or travel decisions. The next steps are re-sourcing the KRW series (see the data note above) and reporting results against these baselines.
+> **Takeaway:** With real USD/KRW data, this feature set and model do not predict the 3-month direction of the won. The project is most useful as a case study in evaluation and data validation: every earlier "signal" disappeared once the labels, the threshold selection and the data source were fixed.
 
 ## Evaluation Fixes (Nov 2026)
 
@@ -92,8 +96,30 @@ An audit of the evaluation found two bugs that inflated the published 80.5% accu
 3. **Baselines.** The hold-out and every walk-forward fold now report a training-majority baseline and the best constant guess, and the model file stores these metrics.
 4. **Dashboard.** Model Insights reads the hold-out metrics from `best_model_v3.pkl` instead of hardcoded numbers, and the January 2025 case study computes the model's call and scores it on the 63-day horizon.
 5. **Compatibility.** `experiment_bitcoin.py` uses `.ffill()` instead of `fillna(method='ffill')`, which pandas 3 removed.
+6. **No automatic winner in the Bitcoin experiment.** `experiment_bitcoin.py` used to print a fixed conclusion for whichever scenario had the highest AUC. It now prints each scenario's constant-guess baseline instead, because the scenarios are scored on different test windows.
 
-Results were produced with pandas 3.1.1, scikit-learn 1.9.1 and xgboost 3.4.1. In the same environment the old pipeline gives 81.9% accuracy and 0.775 AUC-ROC (vs the published 80.5% and 0.746), so library versions shift results slightly; the before/after comparison above uses one environment.
+Results were produced with pandas 3.1.1, scikit-learn 1.9.1 and xgboost 3.4.1. On the original dataset, the old pipeline gives 81.9% accuracy and 0.775 AUC-ROC in this environment (vs the published 80.5% and 0.746), and the fixed pipeline gives 78.2% and 0.711 (v3.1). Those v3.1 numbers were then superseded by the data fix below.
+
+## Data Fix (Nov 2026)
+
+The `KRW` and `KRX` columns in `data/XAU BTC Silver SP500 dataset.csv` did not match the series they are named after:
+
+| Date | Old `KRW` | Market USD/KRW (FRED `DEXKOUS`) | Old `KRX` | KOSPI (Yahoo `^KS11`) |
+|---|---|---|---|---|
+| 2008-01-02 | 937.12 | 936.60 | 1,853.45 | 1,853.45 |
+| 2021-01-04 | 1,111.12 | 1,081.62 | 3,263.88 | 2,944.45 |
+| 2024-12-30 | 1,124.46 | 1,472.32 | 3,177.28 | 2,399.49 |
+| 2025-01-09 | 1,126.79 | 1,459.23 | 3,196.32 | 2,521.90 |
+
+From 2022 onward, no day of the old `KRW` column was within 1% of the market rate, and the gap is not a simple date shift. Because `KRW` is both the target and the source of several features, every earlier result measured a different series.
+
+**What changed:** both columns were replaced; all other columns are unchanged.
+
+- `KRW` = FRED [`DEXKOUS`](https://fred.stlouisfed.org/series/DEXKOUS) (South Korean won to U.S. dollar spot rate, noon buying rate in New York).
+- `KRX` = Yahoo Finance `^KS11` (KOSPI Composite Index) daily close.
+- For each date in the dataset, the value is the latest observation on or before that date (113 `KRW` and 284 `KRX` rows were filled from the previous trading day because of U.S. or Korean holidays).
+
+The raw downloads were checked with per-year checksums before being written into the CSV.
 
 ## How to Run Locally
 1. Install dependencies:
@@ -117,15 +143,18 @@ Results were produced with pandas 3.1.1, scikit-learn 1.9.1 and xgboost 3.4.1. I
 | v2 Initial | XGBoost | **3 months** (63 days) | 46% | - | 0.46 |
 | v2 Final | XGBoost | 3 months (63 days) | 68.4% | 0.798 | 0.70 |
 | v3 | XGBoost | 3 months (63 days) | 80.5%† | 0.746† | 0.78† |
-| **v3.1 (evaluation fix)** | **XGBoost** | **3 months (63 days)** | **78.2%** | **0.711** | **0.76** |
+| v3.1 (evaluation fix) | XGBoost | 3 months (63 days) | 78.2%‡ | 0.711‡ | 0.76‡ |
+| **v3.2 (real USD/KRW and KOSPI data)** | **XGBoost** | **3 months (63 days)** | **41.3%** | **0.246** | **0.41** |
 
-*† Measured with 63 mislabelled test rows and a threshold tuned on the test set. v1–v3 figures are kept as a record of the project's history and were all measured under the old evaluation. See [Evaluation Fixes (Nov 2026)](#evaluation-fixes-nov-2026).*
+*† Measured with 63 mislabelled test rows and a threshold tuned on the test set. v1–v3 figures are kept as a record of the project's history and were all measured under the old evaluation and the original dataset. See [Evaluation Fixes (Nov 2026)](#evaluation-fixes-nov-2026).*
+
+*‡ Measured on the original dataset, whose `KRW` and `KRX` columns were wrong (see [Data Fix](#data-fix-nov-2026)).*
 
 ---
 
 ### ⚠️ Model Limitations & Market Realities
 
-While this project demonstrates strong predictive power based on macroeconomic fundamentals, real-world forex markets are influenced by factors beyond pure data. We transparently acknowledge the following operational blindspots:
+Beyond the lack of predictive skill shown in the results above, real-world forex markets are influenced by factors beyond pure data. We acknowledge the following operational blindspots:
 
 1. **Central Bank Interventions**: The Bank of Korea (BOK) actively intervenes in the FX market to stabilize the Won when it hits psychological levels (e.g., 1,400 or 1,450). A purely macro-driven ML model is blind to these political support/resistance actions.
 2. **Geopolitical Shocks**: Fluctuations driven by unexpected geopolitical events (e.g., North Korean tensions) are not instantly captured by historical numeric features.
@@ -176,7 +205,7 @@ The model was now evaluated properly with a **15% hold-out test set** (`shuffle=
 
 ---
 
-### v3: The Final Optimization (80.5%, later corrected to 78.2%)
+### v3: The Final Optimization (80.5%, later corrected; see v3.1 and v3.2)
 
 The v2 model had strong discriminative power (AUC-ROC 0.798) but still had room for improvement in its training pipeline. Four critical upgrades were made:
 
@@ -197,7 +226,7 @@ The default classification threshold of 0.50 was suboptimal for this imbalanced 
 
 This single change boosted accuracy from 76.5% (default threshold) to **80.5%** (optimal threshold), while maintaining the same AUC-ROC of **0.746**.
 
-> **Correction (Nov 2026):** this threshold search was run on the test set, so the 80.5% was optimistic. The threshold is now chosen on a validation window before the test period. With the label fix as well, the hold-out result is 78.2% accuracy (71.8% at 0.50) and AUC-ROC 0.711.
+> **Correction (Nov 2026):** this threshold search was run on the test set, so the 80.5% was optimistic. The threshold is now chosen on a validation window before the test period. With the label fix, the result on the original dataset was 78.2% accuracy and AUC-ROC 0.711 (v3.1). After replacing the wrong KRW and KRX data, it is 41.3% accuracy and AUC-ROC 0.246 (v3.2).
 
 **4. SHAP Explainability**  
 Added real-time feature contribution visualization in the dashboard, answering "Why does the model predict this?" for every single prediction.
@@ -222,7 +251,7 @@ Added real-time feature contribution visualization in the dashboard, answering "
 | **Test AUC-ROC** | - | - | 0.798 | **0.746**† |
 
 *\*v1 accuracy was inflated due to the lack of a proper hold-out test set*
-*† Superseded by v3.1: threshold chosen on validation (0.60), mislabelled rows removed, 78.2% accuracy and 0.711 AUC-ROC on the hold-out.*
+*† Superseded. v3.1 (threshold chosen on validation, mislabelled rows removed): 78.2% accuracy and 0.711 AUC-ROC on the original dataset. v3.2 (real USD/KRW and KOSPI data): 41.3% accuracy and 0.246 AUC-ROC.*
 
 ### Key Takeaways
 
@@ -232,13 +261,15 @@ Added real-time feature contribution visualization in the dashboard, answering "
 
 3. **The prediction horizon must match the feature granularity.** Predicting 6 months ahead with daily price changes is like trying to forecast the weather next season by looking out the window today. Shortening to 3 months and using 5-60 day rolling returns created a much better signal-to-noise ratio.
 
-4. **Where you tune the threshold matters as much as the threshold.** Tuning it on the test set lifted accuracy to 80.5%. Choosing it on a validation window gives 78.2% on the same kind of hold-out, and only about 5.5 points of that is above a constant "strengthen" guess.
+4. **Where you tune the threshold matters as much as the threshold.** Tuning it on the test set lifted accuracy to 80.5%. Choosing it on a validation window gave 78.2% on the original dataset, only about 5.5 points above a constant "strengthen" guess.
 
 5. **Fixing lookahead bias costs accuracy and that's a good thing.** Applying a 30-day shift to CPI and Unemployment reduced accuracy from 83.2% to 80.5% (both measured under the old evaluation). The drop shows the original model was partially "cheating" by using government data before it was actually published.
 
 6. **Proper evaluation prevents false confidence.** Without a chronological hold-out test set and temporal gap, financial models will always appear more accurate than they truly are.
 
 7. **Check the labels at the edges.** With a 63-day forward target, the last 63 rows have no outcome yet. `NaN > x` evaluates to `False` in pandas, so they were silently labelled "strengthen" and kept, which made 18% of the original test labels fake. Always drop rows whose future value is missing before building a forward-looking target.
+
+8. **Validate the data source before modelling.** The `KRW` column did not contain the USD/KRW rate. A few spot checks against an official series (here FRED `DEXKOUS`) would have caught it, and every result built on it, including the apparent signal, disappeared once the real series was used.
 
 ## Real-World Validation
 
@@ -250,7 +281,7 @@ Added real-time feature contribution visualization in the dashboard, answering "
 |---|---|
 | **Prediction Date** | January 9, 2025 (last row of the dataset) |
 | **Model Says** | KRW will **Strengthen** (↓) over the next 63 trading days |
-| **Probability of Weakening** | 18.9% (v3.1 model, threshold 0.60). The original v3 model gave 31.5%. |
+| **Probability of Weakening** | 40.9% (v3.2 model, threshold 0.45). Earlier models gave 31.5% (v3) and 18.9% (v3.1). |
 
 ### What Actually Happened?
 
@@ -278,42 +309,37 @@ Instead of defending this decision with assumptions, we ran a **controlled exper
 
 Three scenarios were evaluated using the same training pipeline (XGBoost, threshold chosen on a validation window, 63-day gaps, 15% hold-out). The dataset starts in January 2008. Each scenario's hold-out is its own last 15%, so the windows share an end date but start at different dates.
 
-| Scenario | Data Range | Bitcoin | Samples | Features |
-|---|---|---|---|---|
-| **A**: Current Approach | 2014–2025 | ✅ Included | 2,474 | 40 |
-| **B**: Full History | 2008–2025 | ❌ Dropped | 4,009 | 36 |
-| **C**: Hybrid | 2008–2025 | ✅ Zero-filled pre-2014 | 2,512 | 40 |
+| Scenario | Data Range | Bitcoin | Samples | Features | Test window |
+|---|---|---|---|---|---|
+| **A**: Current Approach | 2014–2025 | ✅ Included | 2,474 | 40 | 2023-04-28 to 2024-10-11 (372 days) |
+| **B**: Full History | 2008–2025 | ❌ Dropped | 4,009 | 36 | 2022-06-02 to 2024-10-11 (602 days) |
+| **C**: Hybrid | 2008–2025 | ✅ Zero-filled pre-2014 | 2,512 | 40 | 2023-04-21 to 2024-10-11 (377 days) |
 
-### Results (corrected evaluation, Nov 2026)
+Scenario C keeps only 38 more rows than A: a zero-filled price makes the Bitcoin return features undefined before the Bitcoin series starts (September 2014), so those rows are dropped. In practice C is almost the same experiment as A.
+
+### Results (real USD/KRW and KOSPI data, Nov 2026)
 
 | Scenario | Test Accuracy | Best constant guess | AUC-ROC | F1-Weighted | Threshold (validation) |
 |---|---|---|---|---|---|
-| **A: 2014+ WITH Bitcoin** | 71.5% | 69.9% | **0.7345** | **0.7250** | 0.55 |
-| B: 2008+ NO Bitcoin | 41.5% | 61.0% | 0.4847 | 0.2834 | 0.30 |
-| C: 2008+ Bitcoin filled | **73.5%** | 69.0% | 0.6898 | 0.7089 | 0.60 |
+| A: 2014+ WITH Bitcoin | 61.8% | 61.8% | 0.518 | 0.581 | 0.30 |
+| B: 2008+ NO Bitcoin | 63.3% | 59.3% | 0.661 | 0.633 | 0.30 |
+| C: 2008+ Bitcoin filled | 63.7% | 61.0% | 0.496 | 0.598 | 0.30 |
 
-*The previous version of this table (A: 80.5% / 0.746, B: 65.0% / 0.523, C: 75.7% / 0.761) was measured with mislabelled test rows and thresholds tuned on the test set.*
-
-**🏆 Winner by AUC-ROC: Scenario A.** Scenario C is close and has slightly higher accuracy, so the margin is smaller than the original write-up suggested.
+*Earlier versions of this table were measured on the wrong KRW series (and, before that, with mislabelled test rows and thresholds tuned on the test set). Those versions reported Scenario A as the clear winner; that result does not hold on real data.*
 
 ### Analysis
 
-1. **Removing Bitcoin collapses model performance.** Scenario B's AUC-ROC of 0.4847 is no better than chance (0.50), and its accuracy (41.5%) is far below a constant guess (61.0%). Despite having about **60% more data** (4,009 vs 2,474 samples), the model without Bitcoin cannot distinguish between KRW weakening and strengthening periods in this dataset.
+1. **No scenario shows a reliable signal.** Every threshold landed at 0.30, the bottom of the search grid, so A and C predict "weaken" on about 80% of test days (B on 59%). Scenario A's accuracy equals its constant guess, and its AUC (0.52) is at chance. Scenario C's AUC (0.50) is also at chance; its 2.7-point lead over the constant guess comes from the low threshold, not from ranking days well.
 
-2. **The 2008–2014 history does not help on its own.** Adding pre-Bitcoin macro history (including the Global Financial Crisis, European Debt Crisis, and Taper Tantrum) without Bitcoin *degrades* performance.
+2. **Scenario B ranks days best, but mostly because of its longer test window.** B's test window starts in June 2022; on the June 2022 to April 2023 part of it (the strong-dollar period), its AUC is 0.79. On the same window as A (2023-04-28 onward), B's AUC drops to 0.60 and its accuracy (56.5%) is below the constant guess (61.8%).
 
-3. **The Hybrid result is mixed.** Scenario C (full history + Bitcoin zero-filled before 2014) ranks days less well than A (AUC 0.69 vs 0.73) but scores slightly higher accuracy (73.5% vs 71.5%). Against a constant guess, both add only a few points (C +4.5, A +1.6). Keeping Bitcoin clearly matters; whether to keep the 2008–2014 rows is a closer call.
+3. **The original claim is not supported.** Earlier write-ups said removing Bitcoin "collapses" performance. On real data, removing Bitcoin did not hurt. On the shared window (2023-04-28 to 2024-10-11), A ties the constant guess (61.8%), B falls below it (56.5%), and C edges past it (63.4%) with an AUC below chance (0.48), which points to the low threshold rather than skill.
 
-*These are single hold-out results on the dataset as provided; see the data note at the top about the KRW series.*
+*These are single hold-out results with different test windows, so differences of a few points or a few hundredths of AUC are within noise.*
 
-### Conclusion: A Market Regime Shift
+### Conclusion
 
-This experiment provides **empirical evidence** of a fundamental market regime shift around 2014:
-
-- **Pre-2014**: Currency markets were driven primarily by traditional macro fundamentals (interest rates, trade balances, central bank policy). Bitcoin did not exist as a meaningful asset class.
-- **Post-2014**: The rise of cryptocurrency as a global asset class introduced Bitcoin as a powerful **proxy for global risk appetite and liquidity conditions**. Bitcoin's correlation with emerging market currencies (including KRW) during risk-on/risk-off events makes it an indispensable feature.
-
-> **Keeping Bitcoin is a data-driven design choice, supported by a ~25-point AUC-ROC gap (0.73 vs 0.48) between keeping and removing it. Discarding the 2008–2014 rows is a closer call: the zero-filled hybrid comes within 0.05 AUC and slightly ahead on accuracy.**
+On real USD/KRW data, this experiment does not show that Bitcoin is an essential feature, and it does not show that the 2008–2014 history helps either. The earlier conclusion (a "market regime shift" that made Bitcoin indispensable) came from the wrong KRW series. The decision to start in 2014 should be treated as a modelling choice, not an empirically supported one, until a feature set shows skill against constant baselines on a shared walk-forward window.
 
 *The full experiment code is available in [`experiment_bitcoin.py`](experiment_bitcoin.py).*
 
@@ -322,7 +348,7 @@ This experiment provides **empirical evidence** of a fundamental market regime s
 ## 🚀 Future Roadmap: From Script to Production-Grade System
 > **Status:** *Work in Progress (On-going)*
 
-While the current model shows a weak but consistent signal and a carefully engineered feature set, the architecture is currently a static, local script. The next phase of this project is dedicated to transforming this prototype into a fully automated, production-grade **End-to-End MLOps Pipeline**.
+The current model does not yet show predictive skill on real data, and the architecture is a static, local script. The first priority is a feature set that beats the constant-guess baselines in walk-forward validation; only then is it worth transforming this prototype into a fully automated, production-grade **End-to-End MLOps Pipeline**.
 
 ### Phase 1: Data Engineering & Automated ETL 
 *Current State: Static CSV file.*
