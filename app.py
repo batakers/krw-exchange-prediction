@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
+import hashlib
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -19,11 +20,23 @@ MODEL_PATH = 'best_model_v3.pkl'
 DATA_PATH = 'data/XAU BTC Silver SP500 dataset.csv'
 DEFAULT_THRESHOLD = 0.55
 
+
+def data_file_signature(path=DATA_PATH):
+    """Hash of the CSV contents.
+
+    st.cache_data keys only on a function's arguments and source code, not on
+    the files it reads. Passing this hash to the cached functions makes their
+    results refresh when the dataset changes (e.g. after a redeploy that
+    updates the CSV but not the function code).
+    """
+    with open(path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
 # ─────────────────────────────────────────────
 # SHARED: Feature Engineering (mirrors train_model.py v3)
 # ─────────────────────────────────────────────
 @st.cache_data
-def build_features_for_prediction(data_path):
+def build_features_for_prediction(data_path, data_signature=None):
     """
     Replicates the exact feature engineering pipeline from train_model.py v3,
     but WITHOUT creating a Target column used for live prediction only.
@@ -143,7 +156,7 @@ with tab1:
 
         if st.button("🔄 Run Prediction on Latest Market Data", use_container_width=True):
             try:
-                df_raw, df_features, feature_cols = build_features_for_prediction(DATA_PATH)
+                df_raw, df_features, feature_cols = build_features_for_prediction(DATA_PATH, data_file_signature())
 
                 # Use only the features the model was trained on
                 available_features = [f for f in trained_features if f in df_features.columns]
@@ -419,9 +432,9 @@ with tab2:
         st.markdown("Displays the historical correlation of multi-horizon returns between global assets.")
 
         @st.cache_data
-        def get_correlation_matrix(data_path):
+        def get_correlation_matrix(data_path, data_signature=None):
             """Build correlation matrix from derived return features."""
-            _, df_features, _ = build_features_for_prediction(data_path)
+            _, df_features, _ = build_features_for_prediction(data_path, data_signature)
 
             # Select only return columns for a cleaner heatmap
             ret_cols = [c for c in df_features.columns if '_ret_20d' in c]
@@ -431,7 +444,7 @@ with tab2:
             return df_features.corr()
 
         try:
-            corr_matrix = get_correlation_matrix(DATA_PATH)
+            corr_matrix = get_correlation_matrix(DATA_PATH, data_file_signature())
 
             fig_corr = px.imshow(
                 corr_matrix,
@@ -556,7 +569,7 @@ with tab2:
                    "Days without an observed 63-day outcome are excluded.")
 
         try:
-            df_raw, df_features, feature_cols = build_features_for_prediction(DATA_PATH)
+            df_raw, df_features, feature_cols = build_features_for_prediction(DATA_PATH, data_file_signature())
 
             # Replicate the exact train/test split from train_model.py
             from sklearn.model_selection import train_test_split as tts
@@ -621,7 +634,7 @@ with tab2:
         # Compute the deployed model's call for Jan 9, 2025 instead of hardcoding it
         case_prob = None
         try:
-            _, df_feat_case, _ = build_features_for_prediction(DATA_PATH)
+            _, df_feat_case, _ = build_features_for_prediction(DATA_PATH, data_file_signature())
             case_row = df_feat_case.loc[['2025-01-09'], feature_names]
             case_prob = float(rf_model.predict_proba(case_row)[:, 1][0])
         except Exception:
